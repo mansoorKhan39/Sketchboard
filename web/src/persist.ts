@@ -1,0 +1,106 @@
+import { nanoid } from "nanoid";
+import type { BoardObject, Viewport } from "./types";
+
+// Local storage layout (until the real backend exists):
+//   sketchboard.boards.v2        -> list of boards (id, name, dates)
+//   sketchboard.board.v2.<id>    -> { objects, viewport } of one board
+const INDEX_KEY = "sketchboard.boards.v2";
+const dataKey = (id: string) => `sketchboard.board.v2.${id}`;
+const OLD_KEY = "sketchboard.board.v1"; // the single board from Stage 2
+
+export interface BoardMeta {
+  id: string;
+  name: string;
+  createdAt: number;
+  updatedAt: number;
+}
+export interface BoardData {
+  objects: BoardObject[];
+  viewport: Viewport;
+}
+
+const DEFAULT_VIEWPORT: Viewport = { x: 0, y: 0, scale: 1 };
+
+// localStorage can be blocked or hold broken data, so every access is wrapped.
+function read<T>(key: string): T | null {
+  try {
+    const raw = localStorage.getItem(key);
+    return raw ? (JSON.parse(raw) as T) : null;
+  } catch {
+    return null;
+  }
+}
+function write(key: string, value: unknown) {
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch {
+    /* storage full or blocked — the board still works, it just won't be saved */
+  }
+}
+
+function saveIndex(list: BoardMeta[]) {
+  write(INDEX_KEY, list);
+}
+
+export function listBoards(): BoardMeta[] {
+  let list = read<BoardMeta[]>(INDEX_KEY);
+  if (!Array.isArray(list)) {
+    list = [];
+    // bring the Stage 2 board along so nobody loses work
+    const old = read<BoardData>(OLD_KEY);
+    if (old && Array.isArray(old.objects) && old.objects.length) {
+      const now = Date.now();
+      const meta = { id: nanoid(8), name: "My first board", createdAt: now, updatedAt: now };
+      write(dataKey(meta.id), { objects: old.objects, viewport: old.viewport ?? DEFAULT_VIEWPORT });
+      list = [meta];
+      saveIndex(list);
+    }
+  }
+  return [...list].sort((a, b) => b.updatedAt - a.updatedAt);
+}
+
+export const getBoardMeta = (id: string) => listBoards().find((b) => b.id === id) ?? null;
+
+export function loadBoardData(id: string): BoardData | null {
+  if (!getBoardMeta(id)) return null;
+  const d = read<BoardData>(dataKey(id));
+  if (!d || !Array.isArray(d.objects)) return { objects: [], viewport: DEFAULT_VIEWPORT };
+  const v = d.viewport;
+  const ok = v && typeof v.x === "number" && typeof v.y === "number" && typeof v.scale === "number";
+  return { objects: d.objects, viewport: ok ? v : DEFAULT_VIEWPORT };
+}
+
+export function saveBoardData(id: string, objects: BoardObject[], viewport: Viewport) {
+  write(dataKey(id), { objects, viewport });
+  const list = listBoards().map((b) => (b.id === id ? { ...b, updatedAt: Date.now() } : b));
+  saveIndex(list);
+}
+
+export function createBoard(name: string, objects: BoardObject[] = []): BoardMeta {
+  const now = Date.now();
+  const meta: BoardMeta = { id: nanoid(8), name: name.trim() || "Untitled board", createdAt: now, updatedAt: now };
+  write(dataKey(meta.id), { objects, viewport: DEFAULT_VIEWPORT });
+  saveIndex([meta, ...listBoards()]);
+  return meta;
+}
+
+export function renameBoard(id: string, name: string) {
+  const clean = name.trim() || "Untitled board";
+  saveIndex(listBoards().map((b) => (b.id === id ? { ...b, name: clean } : b)));
+}
+
+export function deleteBoard(id: string) {
+  saveIndex(listBoards().filter((b) => b.id !== id));
+  try {
+    localStorage.removeItem(dataKey(id));
+  } catch {
+    /* ignore */
+  }
+}
+
+export function duplicateBoard(id: string): BoardMeta | null {
+  const meta = getBoardMeta(id);
+  const data = loadBoardData(id);
+  if (!meta || !data) return null;
+  return createBoard(`${meta.name} copy`, data.objects);
+}

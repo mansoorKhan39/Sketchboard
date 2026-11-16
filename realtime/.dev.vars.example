@@ -1,0 +1,2 @@
+# Copy to .dev.vars for local development. Must be the same value as REALTIME_SECRET used by the website/API.
+REALTIME_SECRET=dev-realtime-secret-change-me
