@@ -39,6 +39,18 @@ Each decision lists what else could have been chosen, so the reasons can be expl
 | D7 | Where board content lives | In the board room's own storage; snapshots copied to MongoDB | Everything in MongoDB | Reads and writes while editing stay inside one place with no database call per edit; MongoDB holds users, board list and snapshots |
 | D8 | Login and room access | Hashed passwords; session token for the REST API; short-lived signed join token for a board room | Third-party login such as Google | No extra service needed; the join token lets the room trust who may join without calling the API |
 
+Updated for Stages 6–11. These decisions were added when pictures, frames, comments, versions, votes, timer, reactions, mind map and private mode were built.
+
+| ID | Decision | Chosen | Alternatives | Why |
+| --- | --- | --- | --- | --- |
+| D9 | Where pictures are stored | Inside the board, as a compressed data URL in the image object (`src`) | A file store such as an object bucket | Free hosting here has no file storage. A picture inside the board syncs, saves, exports and restores like any other object. The browser shrinks it first (stored text at most 150,000 characters; the room accepts up to 200,000) |
+| D10 | How votes are counted | One small vote object per vote (`targetId`, `voter`) | A counter field on the voted object | Two people voting at the same moment would overwrite each other in a counter, because the last edit to a field wins (D4). Separate objects never collide. The badge number is the count of vote objects for that target |
+| D11 | How a version is restored | As a normal edit: the old objects are put on the board with the usual history step (`restoreObjects`) | A special server command that swaps the whole board | A normal edit reaches everyone live through the same path as any other edit, and Ctrl+Z brings the current board back. No new message type is needed. A "Before restore" copy is saved first |
+| D12 | Where versions are stored | Their own `versions` collection, one document per board | Inside the board record | Versions can be large (up to 8,000,000 characters per board) and are read rarely. Keeping them apart keeps the board list and board saves small, and stays under the MongoDB 16 MB document limit |
+| D13 | Private mode | Display only: a settings object makes other people's sticky notes show "• • •" | Server-side hiding of the text | Hiding on the server would need the room to filter every message per user. The simple version only changes what is drawn. The hidden text still reaches every browser, so it is not a security feature |
+| D14 | Comments, votes, timer and reactions | Board objects drawn as HTML layers over the Konva canvas ("overlay objects") | Drawing them inside Konva; a separate sync channel | They sync with the existing edit path, and HTML gives sharp text, inputs and a pin size that stays the same at any zoom |
+| D15 | Timer and reactions in undo | Kept out of undo, redo and restore ("live parts") | Treat them like drawing objects | They belong to the present moment. Undo must not stop a running timer or bring back an old reaction |
+
 ## 4. Component design
 
 The repository keeps the three deployable parts separate and puts shared types in one package. The SCD will show the real folders.
@@ -49,9 +61,9 @@ The repository keeps the three deployable parts separate and puts shared types i
 | --- | --- | --- |
 | Screens | Landing, sign up, log in, dashboard, board page | FR-A, FR-B |
 | Canvas | Konva stage, zoom, pan, grid, drawing and selection | FR-C, FR-T |
-| Tools | One handler per tool: sticky note, shape, pen, text, connector | FR-T1 to FR-T6 |
-| Board store | All objects of the open board, current selection, tool and viewport | FR-T, FR-C |
-| History | Per-user undo and redo of own edits | FR-T11 |
+| Tools | One handler per tool: sticky note, shape, pen, text, connector, frame, comment | FR-T1 to FR-T6 |
+| Board store | All objects of the open board, current selection, tool, viewport, presentation state (present) and the open comment | FR-T, FR-C |
+| History | Per-user undo and redo of own edits (the timer and reactions are left out, see 4.4) | FR-T11 |
 | Sync client | Opens the WebSocket, sends edits, applies edits from others, reconnects | FR-R |
 | Presence | Live cursors and the list of people on the board | FR-R2, FR-R3 |
 | API client | Typed calls to the REST API | FR-A, FR-B, FR-S |
@@ -75,6 +87,37 @@ The repository keeps the three deployable parts separate and puts shared types i
 | Board room | Keeps the board state, gives each edit its order number, rejects edits from viewers, sends edits to everyone | FR-R, FR-S4 |
 | Room storage | Saves the board state so a restart loses nothing | NFR-5 |
 | Presence relay | Passes cursor positions between users without storing them | FR-R2 |
+
+### 4.4 Modules added in Stages 6–11
+
+Updated for Stages 6–11. The board now has 12 object types: sticky, shape, stroke, text, image, frame, comment, vote, timer, reaction, settings and connector. Five of them (comment, vote, timer, reaction, settings) are overlay objects. An overlay object is a normal board object that syncs, saves and is validated like the others, but it has width and height 0 and is not drawn on the Konva canvas. `isOverlay()` in `kinds.ts` is the one place that names them. Overlay objects are skipped by the selection box, copy, paste and duplicate, Export PNG, Fit, dashboard thumbnails, and they do not count as board content (the empty-board hint and "This board is empty" ignore them).
+
+Comment pins, vote badges, floating reactions and the timer are HTML layers placed over the Konva canvas, so they keep a constant size at any zoom. The settings object has no visible part; it only holds the private-mode switch.
+
+| Module (file) | Responsibility |
+| --- | --- |
+| Object kinds (`kinds.ts`) | `isOverlay`, `isTransient` and `withLiveParts`. The "live parts" are the timer and reactions |
+| Extras (`extras.ts`, `components/Extras.tsx`) | Vote and timer helpers, limits (`MAX_VOTES` 5, `REACTION_LIFE` 3.5 s). Components VoteLayer, ReactionLayer, ExtrasBar, TimerBar, VoteButtons |
+| Comments (`comments.ts`, `components/CommentLayer.tsx`) | Pins and threads as HTML over the canvas. Limits `MAX_COMMENT_CHARS` 500, `MAX_THREAD` 50 |
+| Pictures and export (`image.ts`, `exportPng.ts`) | Shrinks pictures before storing; draws all content to a PNG at 1:1 on the page colour |
+| Presenter (`components/Presenter.tsx`) | Presentation mode: bottom bar, keys, gliding view. Uses `sortedFrames`, `frameFit` and `insideFrame` from `geometry.ts` |
+| History panel (`components/HistoryPanel.tsx`) | Owner-only list of saved versions, save and restore, through the Repo |
+| Templates (`templates.ts`) | 9 starting boards, including Mind map, SWOT analysis, Retrospective, Weekly planner and Presentation |
+| Repo (`repo.ts`) | Now also `listVersions`, `saveVersion` and `getVersion` (see 6.4) |
+| Server versions (`api/_lib/versions.ts`) | `addVersion` keeps the newest 5 versions and the size cap. `VersionRec` is in `api/_lib/types.ts` |
+
+The board store gained these state fields and actions:
+
+| Name | Meaning |
+| --- | --- |
+| `present` | Presentation state `{index, back}`: the frame shown and the view to return to. Empty when not presenting |
+| `commentId` | The comment whose thread is open (`setCommentId`) |
+| `startPresent`, `stepPresent`, `stopPresent` | Enter, move through and leave presentation mode. Editing is blocked and toolbars are hidden while it runs; viewers can present |
+| `restoreObjects` | Restore a version as a normal undoable edit (see 5.3) |
+| `liveEdit` | A change that is not part of undo history; used by the timer and reactions |
+| `castVotes`, `withdrawVotes` | Add or remove the current person's votes, up to 5 per person |
+| `addChildNode`, `addSiblingNode` | Mind map: Tab adds a linked child note, Enter adds a sibling. Each is one undo step |
+| `fitToContent` | Opens a never-moved board fitted to its content |
 
 ## 5. Realtime sync design
 
@@ -105,6 +148,17 @@ All messages are typed JSON and are defined once in the shared types package.
 - **Reconnect.** The client keeps unconfirmed edits. After a drop it sends hello with its last order number, receives the edits it missed (or the full state if it is far behind), then resends unconfirmed edits. Edit ids are unique, so a repeated edit is applied only once.
 - **Free-plan limit.** Pen strokes are sent in small batches, not point by point, to stay inside the free daily request limit described in the Feasibility Study.
 
+### 5.3 Rules added in Stages 6–11
+
+Updated for Stages 6–11. The message types in 5.1 did not change. The new object types travel inside the same add, change and delete edits.
+
+- **Live parts are not in undo.** The timer and reactions change through `liveEdit`. Undo, redo and restore call `withLiveParts(older, current)`, which keeps the current timer and reactions and takes everything else from the older copy. Undo never stops a running timer.
+- **Restore is a normal edit.** `restoreObjects` puts the old objects on the board with `withHistory`, so the edit goes through the sync client like any other. Everyone live sees the restored board, and Ctrl+Z brings the previous board back. Before this, the History panel saves a "Before restore" copy.
+- **Votes are separate objects.** Casting a vote adds a vote object; withdrawing removes one. Deleting an object also deletes its votes. Because each vote is its own object, simultaneous votes do not overwrite each other.
+- **Reactions and the timer are objects too.** A reaction floats for 3.5 s; the sender removes it after about 4 s, and anyone's next reaction sweeps ones older than about 10.5 s. The timer stores a clock time (`endsAt`), so all screens agree up to small clock differences between computers.
+- **Limits in the room.** One object may hold at most 64,000 characters; an image object may hold 200,000 (`MAX_IMAGE_BYTES`). A board still holds at most 5,000 objects. The browser keeps a picture's stored text to 150,000 characters or less, so it stays under the room limit.
+- **Known limits.** Two people replying to the same comment pin at the same moment: the last write wins, because the thread is one field. A reaction stays on the board if its sender closes the tab, until a later sweep.
+
 ## 6. Data placement and security design
 
 ### 6.1 Where each kind of data lives
@@ -116,7 +170,7 @@ Tables and fields are defined in the Database Design document; this table only s
 | Users (email, display name, password hash) | MongoDB Atlas | Needed by the REST API only |
 | Board list and settings (name, owner, share link, link right) | MongoDB Atlas | Listed and edited through the REST API |
 | Live board content (all objects and their order numbers) | Board room storage on Cloudflare | Read and written on every edit with no database call |
-| Board snapshots | MongoDB Atlas | Backup and later version history |
+| Board snapshots | MongoDB Atlas | Backup of the board (version history is kept separately, see 6.4) |
 | Cursors and who is online | Memory of the board room only | Short-lived; never stored |
 | Session and join tokens | Held by the client | Signed, so the server stores nothing |
 
@@ -138,6 +192,27 @@ Tables and fields are defined in the Database Design document; this table only s
 | Script injection through text | Input validated by schema; text drawn as text, never as HTML |
 | Eavesdropping | HTTPS and WSS only |
 | Abuse of free limits | Limit message size and rate per connection in the room |
+
+### 6.4 Versions, type lists and limits
+
+Updated for Stages 6–11. This section covers data placement added by version history, and the rules that keep the three parts in step.
+
+| Boards of | Where versions live | Details |
+| --- | --- | --- |
+| Signed-in users | MongoDB, in a separate `versions` collection | One document per board. Its `_id` is the board id; the field `versions` is a list of `{id, at, label, objects}`, oldest first. Newest 5 kept (`MAX_VERSIONS`); all versions of one board together stay under 8,000,000 characters (`MAX_VERSION_BYTES`), so big boards keep fewer than 5 and the newest always survives. Deleting a board deletes its versions. "Duplicate" does not copy them. The collection is created on the first save |
+| Guests | The browser, in `localStorage` key `sketchboard.versions.v1.<boardId>` | If the browser is full, the oldest versions are dropped; an error shows if even one does not fit |
+
+Only the board owner can list, save and restore versions; other people get 404 from the API. The server store interface gained `getVersions(boardId)` and `setVersions(boardId, list)` in all three stores (MemoryStore, FileStore, Mongo). The client Repo interface gained `listVersions`, `saveVersion` and `getVersion`; the local and cloud repos both implement them, so the History panel does not care which one it gets.
+
+Three type lists must stay in sync. When a new object type is added, change all three:
+
+1. The browser type `BoardObject` in `web/src/types.ts` (and `kinds.ts` if it is an overlay).
+2. The room's `ObjType` and `TYPES` in `realtime/src/protocol.ts` and `realtime/src/validate.ts` (two identical copies).
+3. The API zod enum for `type` in `web/api/_lib/core.ts`.
+
+If the room list is not updated, live editing refuses the new type, so the Worker must be redeployed after such a change.
+
+Private mode is display only. The hidden text of other people's sticky notes still reaches every browser; only what is drawn changes. Sticky notes without an author (`by` missing, for example from templates or old boards) stay visible.
 
 ## 7. Meeting the non-functional requirements, deployment and sources
 
@@ -168,3 +243,47 @@ Tables and fields are defined in the Database Design document; this table only s
 - [Design a Real-Time Collaborative Whiteboard (techinterview.org)](https://techinterview.org/system-design-collaborative-whiteboard/)
 - [Cloudflare, Durable Objects pricing and limits](https://developers.cloudflare.com/durable-objects/platform/pricing)
 - [Cloudflare, WebSocket Hibernation in Durable Objects](https://developers.cloudflare.com/durable-objects/index.md)
+
+## Appendix: Update for Stages 6–11
+
+The design below was added after the main document was written. Where it differs from the earlier text, this appendix is current.
+
+### A. Twelve object types, three lists that must match
+
+A board is still one flat list of objects. It now holds 12 types: sticky, shape, stroke, text, image, frame, comment, vote, timer, reaction, settings and connector. The type is checked in three places that must always agree: the browser type `BoardObject` (`web/src/types.ts`), the live server (`ObjType` in `realtime/src/protocol.ts`, `TYPES` in `realtime/src/validate.ts`) and the API (zod list in `web/api/_lib/core.ts`). If one list lacks a type, that part of the system refuses the object.
+
+### B. Overlay objects
+
+Comments, votes, the timer, reactions and the settings object have no size and are not drawn on the Konva canvas. They are plain board objects, so they save and sync like the rest, but React draws them as HTML on top of the canvas (`CommentLayer`, `VoteLayer`, `ReactionLayer`, `TimerBar`, `ExtrasBar` in `Extras.tsx`). The helper `isOverlay()` in `kinds.ts` is used everywhere these must be skipped: selection box, copy and paste, Fit, PNG export, dashboard thumbnails and the empty-board hint.
+
+### C. Live parts and undo
+
+The timer and reactions describe the present moment, not the drawing. `liveEdit()` changes them without writing an undo step, and `withLiveParts()` keeps them when undo, redo or a version restore swaps the other objects. Votes and comments are part of the drawing, so they can be undone.
+
+### D. Frames and presentation
+
+A frame is drawn under all other objects. Its inside is not clickable, so a click in an empty frame still starts a selection box. When a frame is dragged, the objects whose centre lies inside it are moved in the same step (`insideFrame` in `geometry.ts`). Presentation mode keeps `present = { index, back }` in the store: `sortedFrames` orders frames by slide number then id, `frameFit` calculates the view that fits one frame, and `Presenter.tsx` glides the view there in 0.45 seconds and blocks editing. `back` is the view to return to on exit.
+
+### E. Version history
+
+| Part | Design |
+| --- | --- |
+| Signed-in boards | Versions live on the server in a separate `versions` collection (one document per board). `addVersion()` keeps the newest 5 and drops the oldest while the total is over 8,000,000 characters |
+| Guest boards | Versions live in the browser (`localStorage`, key `sketchboard.versions.v1.<board id>`); the oldest are dropped when the browser is full |
+| Access | The Repo interface has `listVersions`, `saveVersion`, `getVersion`; the cloud repo calls three API routes, the guest repo uses the browser |
+| Restore | `restoreObjects()` puts the old objects on the board as a normal edit, so it is undoable and is sent to everyone live by the usual change sending |
+
+### F. Design decisions
+
+| Decision | Reason |
+| --- | --- |
+| Pictures are stored inside the board object | Free hosting has no file storage. The browser shrinks the picture so one object stays under 150,000 characters |
+| Each vote is its own object | Two people voting at once both win. A single counter field would let one overwrite the other |
+| Restore is a normal edit, not a server-side swap | A server swap would be overwritten by the live room and would not reach people already on the board |
+| Versions are a separate collection | Loading a board stays light, and the board document cannot grow past the database limit |
+| Private mode only changes the display | Hiding data for real would need author-aware filtering in the Worker; the feature is meant for brainstorming, not secrets |
+| The timer stores an end time, not a counter | Every screen can work out the time left from its own clock without a message every second |
+
+### G. New code
+
+New files: `kinds.ts`, `extras.ts`, `comments.ts`, `image.ts`, `exportPng.ts`, `components/Presenter.tsx`, `CommentLayer.tsx`, `HistoryPanel.tsx`, `Extras.tsx`, and on the server `api/_lib/versions.ts`. New store parts: `present`, `commentId`, `restoreObjects`, `liveEdit`, `castVotes`, `withdrawVotes`, `addChildNode`, `addSiblingNode`, `startPresent`, `stepPresent`, `stopPresent`. The live server needed no new logic, only the longer type list and a higher size limit for images (200,000 characters instead of 64,000). **After this update the Worker must be redeployed.**

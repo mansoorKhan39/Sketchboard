@@ -211,3 +211,39 @@ No defect is open. Five were found and fixed while building; each was re-tested 
 | --- | --- | --- | --- |
 | Tester | Mansoor Ali Khan |  |  |
 | Supervisor |  |  |  |
+
+## Appendix: Update for Stages 6–11
+
+This appendix adds the tests written after the first version of this report. The old totals above (27 automated, 68 of 68 cases run) stay as they were on 16 Nov 2026. Results below are from the local setup only.
+
+### New case groups
+
+| Group | Prefix | Covers | Automated by | Result |
+| --- | --- | --- | --- | --- |
+| Pictures | TC-P01–P05 | Add a picture, wrong file type, size limits, server size limit, PNG export of pictures | `pictures.test.ts` (4), `api.test.ts` (1), `e2e-images` | Pass |
+| Frames and Present | TC-F01–F08 | Frame carries its contents, sorted frames, fit to frame, present mode steps and exit | `frames.test.ts` (4), `e2e-frames` (20 checks) | Pass |
+| Comments | TC-M01–M06 | Pin, reply, resolve, 500-char and 50-message limits, viewer is read-only | `comments.test.ts` (4), `e2e-comments` (11 checks) | Pass |
+| Version history | TC-H01–H08 | Save, keep newest 5, size cap, restore, owner-only, guest versions in the browser | `versions.test.ts` (5), `e2e-history` (19 checks) | Pass |
+| Timer, votes, reactions | TC-X01–X08 | Timer start/stop, 5 votes per person, withdraw, two voters both counted, reaction rate and life | `extras.test.ts` (7), `e2e-extras` (21 checks) | Pass |
+| Mind map, private mode, templates | TC-N01–N08 | Tab adds child, Enter adds sibling, private mode hides authors, 9 templates open fitted | `mindmap.test.ts` (5), `e2e-stage11` (13 checks) | Pass |
+| Deployment, new checks | TC-D09–D14 | See the Deployment document | Manual | Not run |
+| Live sync of new features | TC-C23–C28 | Two windows through the real Worker: comment, vote, timer, reaction, frame move, restore | Manual | Not run |
+
+### New totals (local setup)
+
+| Measure | Count |
+| --- | --- |
+| Unit and API tests now (`npm test`, run in `web/`) | 57, all pass |
+| Unit and API tests added since the first report | 30 (27 before) |
+| Browser check scripts added | 5 scripts, 84 checks, all pass |
+| Cases not run | TC-D01–D14 and TC-C23–C28 (20 cases) |
+
+The user also ran `npm test` on Windows: 57 of 57 passed, `tsc` clean, production build OK.
+
+### What is not verified
+
+- Live sync of the new features across two windows through the real Cloudflare Worker.
+- The real MongoDB Atlas `versions` collection.
+- Real Vercel and Cloudflare deployment.
+
+**Updated exit criteria:** automated tests pass (met, 57 of 57); browser scripts pass (met on local setup); no open Critical or High defect (met); deployment check run once (not met yet). The release is accepted for local use and still held for deployment.

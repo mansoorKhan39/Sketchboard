@@ -69,17 +69,17 @@ The wireframe shows a sticky note selected, with its colour picker above it, a c
 
 | Region | Content | Notes |
 | --- | --- | --- |
-| Top bar | Board name, save and connection status, avatars of people on the board, Share button | Only the owner can rename the board and see Share; a viewer sees a "View only" tag |
-| Toolbar | One button per tool, vertical on the left | Viewers see only the select tool |
+| Top bar | Board name, save and connection status, avatars of people on the board, History button (owner only), Present button (only when the board has a frame), Export PNG button, theme switch, Share button | Only the owner can rename the board and see Share; a viewer sees a "View only" tag |
+| Toolbar | One button per tool, vertical on the left, with the Image button at the end | Viewers see only the select tool |
 | Canvas | Dotted background, objects, selection, live cursors | Fills the rest of the window |
-| Properties panel | Small floating bar next to the selection: colour, text size, arrange | Appears only when something is selected |
+| Properties panel | Small floating bar next to the selection: colour, text size, arrange; for a frame also title, slide number and Present from here; Add child for notes; Vote buttons | Appears only when something is selected |
 | Zoom controls | Zoom out, zoom level, zoom in, fit to screen | Bottom right |
 
 Save and connection status in the top bar: "All changes saved", "Saving", "Offline, changes will sync when you reconnect", and "Reconnecting" (FR-R5, FR-R6).
 
 ### 4.2 Tools and shortcuts
 
-The keys are chosen to be easy to remember. F is a Phase 2 tool and is drawn dashed.
+The keys are chosen to be easy to remember. The toolbar shows the tools in this order: Select, Sticky note, Shape, Pen, Connector, Frame, Comment, Text, Image. Frame, Comment and Image were added after Phase 1 and are now built. Keys are ignored while the user types in a text box.
 
 | Tool or action | Key | Phase |
 | --- | --- | --- |
@@ -87,10 +87,14 @@ The keys are chosen to be easy to remember. F is a Phase 2 tool and is drawn das
 | Sticky note | N | 1 |
 | Shape | S | 1 |
 | Pen | P | 1 |
-| Text | T | 1 |
 | Connector or line | L | 1 |
-| Frame | F | 2 |
-| Undo, redo | Ctrl or Cmd + Z, Ctrl or Cmd + Shift + Z | 1 |
+| Frame | F | 2 (built in Stage 7) |
+| Comment | C | Stages 6–11 |
+| Text | T | 1 |
+| Image | Toolbar button, drag and drop, or Ctrl or Cmd + V with a picture copied | Stages 6–11 |
+| Add a linked child note to the selected note | Tab | Stages 6–11 |
+| Add a sibling note next to the selected note | Enter | Stages 6–11 |
+| Undo, redo | Ctrl or Cmd + Z, Ctrl or Cmd + Shift + Z (Ctrl + Y also redoes) | 1 |
 | Copy, paste, duplicate | Ctrl or Cmd + C, V, D | 1 |
 | Delete | Delete or Backspace | 1 |
 | Bring forward, send backward | Ctrl or Cmd + \] and \[ | 1 |
@@ -99,6 +103,9 @@ The keys are chosen to be easy to remember. F is a Phase 2 tool and is drawn das
 | Zoom | Mouse wheel, pinch, or + and - keys | 1 |
 | Fit the board to the screen | Shift + 1 | 1 |
 | Back to the select tool, clear selection | Escape | 1 |
+| In presentation mode: next frame | Right arrow, Down arrow, Page Down or Space | Stages 6–11 |
+| In presentation mode: previous frame | Left arrow, Up arrow or Page Up | Stages 6–11 |
+| In presentation mode: leave | Escape | Stages 6–11 |
 
 ### 4.3 Making and editing objects
 
@@ -241,3 +248,56 @@ The design target is that at least four of the five people finish every task wit
 ### Sources
 
 - [W3C, Web Content Accessibility Guidelines 2.1 (contrast and keyboard rules)](https://www.w3.org/TR/WCAG21/)
+
+## Appendix: Update for Stages 6–11 (as built)
+
+The screens below were added after the main design. Where they differ from earlier text, this appendix is current.
+
+### A. Toolbar and shortcuts
+
+The left toolbar now has, from top: Select (V), Sticky note (N), Shape (S), Pen (P), Connector (L), **Frame (F)**, **Comment (C)**, Text (T) and **Image** (button only, shown to editors).
+
+| Key | Action |
+| --- | --- |
+| F | Frame tool |
+| C | Comment tool |
+| Tab | Add a linked child note to the selected note, shape or text |
+| Enter | Add a sibling note next to the selected one |
+| Ctrl+V | Paste a picture from the clipboard |
+| Esc, arrows, Space, PageUp, PageDown | Only in presentation: exit, next and previous frame |
+
+### B. Top bar
+
+From the right: **History** (owner only), **Present** (only when the board has a frame), **Export PNG**, theme switch, Share. Short messages appear in a dark pill under the bar for 4 seconds, for example *This board is empty. Add something before exporting.*, *That file is not a picture.*, *That picture is larger than 15 MB.* or *That picture is too detailed to store. Try a smaller one.*
+
+### C. Bottom-centre bar
+
+One rounded bar with five reactions (👍 ❤️ 🎉 😂 👀), a divider, then **Timer** and **Private** toggle buttons. A toggle that is on is filled with the brand colour (`aria-pressed`). Viewers do not see this bar. A reaction floats up from the middle of the view and fades in about 3.5 seconds. The timer card sits just above the bar: time left in large numbers, Pause or Start, Reset and a length list (1, 3, 5, 10 min). At zero the numbers turn red and read *Time's up*.
+
+### D. Frames and presentation
+
+A frame is a thin grey rounded border with a faint tint and a bold grey title at its top left. Its inside cannot be clicked, so you can start a selection box inside it. The properties bar for one frame shows a title field, a Slide number field and **Present from here**. Presenting hides every bar and shows only a bottom bar: previous arrow, “2 / 5 Title”, next arrow and **Exit**. The previous or next arrow is disabled at the ends.
+
+### E. Comments
+
+A pin is a round brand-coloured badge with a point at its lower left; it shows the number of messages (or + when empty, ✓ when resolved and grey). Clicking opens a 288 px thread card below it: messages (author, date and time, text), a reply box (Enter sends, Shift+Enter makes a new line), **Send**, **Resolve** or **Reopen**, and **Delete**. Viewers see the thread and the line *You can read comments, but not add them (view only).*
+
+### F. Votes
+
+In the properties bar, for any selected object that can be voted on: **Vote**, **Remove** (only if you have voted there) and a small counter such as *3 left*. Vote is disabled when none are left. A round badge “▲ 2” sits on the top-right corner of the voted object; the badge is filled with the brand colour when one of the votes is yours.
+
+### G. History panel
+
+A 320 px card under the top bar: title, the line *The last 5 saved versions are kept.*, a full-width **Save a version now** button and a list of versions (label, date, number of objects). **Restore** changes to **Replace board?** on the first press; a second press restores. If the list is empty it says *No versions yet.*
+
+### H. Mind map and private mode
+
+With one note selected the properties bar shows **Add child** (the same as Tab). A new note opens straight into typing. In private mode other people's sticky notes show “• • •” in grey and do not open for editing; the Private button explains this in its tooltip.
+
+### I. Start screen
+
+The template row now has 9 cards (Blank board, Brainstorm, Kanban, Flowchart, Mind map, SWOT analysis, Retrospective, Weekly planner, Presentation), scrolling sideways. A board that was never moved opens fitted to its content.
+
+### J. Accessibility notes
+
+Comment pins have a label such as *Comment 2 (resolved)*; reaction buttons are labelled *React 👍*; presentation arrows are *Previous frame* and *Next frame*; the timer length list is *Timer length*; the frame title field is *Frame title*; toggle buttons use `aria-pressed`; the notice pill uses `role=status` and the vote and history cards are keyboard reachable buttons. Pins, votes and reactions are not read as part of the canvas, because the canvas itself is a picture; this is a known limit.

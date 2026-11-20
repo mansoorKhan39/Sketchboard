@@ -331,6 +331,48 @@ These points are not decided yet. Each one is a small edit to this SRS once answ
 - [ ] Confirm TypeScript for the REST API (current plan) instead of FastAPI
 - [ ] Name of the course, supervisor and submission date for the cover page
 
+## 10. Update for Stages 6–11 (as built)
+
+Phase 2 and Phase 3 are now built and tested. This section lists each requirement as it was implemented, so it takes priority over the planning tables above where they differ. Section 3 and 4.7 stay as the original plan.
+
+### 10.1 Functional requirements as built
+
+| ID | Requirement as built | Phase | Status |
+| --- | --- | --- | --- |
+| FR-I1 | The user can add a picture from the toolbar, by drag-and-drop or by pasting (Ctrl+V). The browser shrinks it first and stores it inside the board object | 2 | Done |
+| FR-I2 | The user can save the whole board as a PNG file with the Export PNG button; an empty board shows a message instead. PDF export was not built | 2 | Done (PNG only) |
+| FR-I3 | The user can draw frames (key F), name them, number them (slide) and move them; objects inside a frame move with it | 2 | Done |
+| FR-I4 | The user can present the frames in slide order: the view moves to fit each frame, arrow keys or buttons change slide, Esc exits, editing is blocked, viewers can present | 2 | Done |
+| FR-I5 | The user can drop a comment pin (key C) at any board position and write a thread of replies; a thread can be resolved, reopened or deleted. Viewers can read only | 2 | Done (pin at a position, not attached to an object; no @mentions) |
+| FR-I6 | The owner can save a version of a board; the newest 5 are kept; any version can be restored. Restoring first saves a Before restore copy and is one undoable step | 2 | Done |
+| FR-I7 | Each person can give up to 5 votes on a board (several on one object) and take them back; the count shows on the object | 3 | Done |
+| FR-I8 | Everyone can send emoji reactions that float up and disappear after about 3.5 seconds | 3 | Done |
+| FR-I9 | An editor can show a countdown timer (1, 3, 5 or 10 minutes) with Start, Pause and Reset; at zero it shows Time's up and beeps once | 3 | Done (independent of voting; votes are always open) |
+| FR-I10 | With one note, shape or text selected, Tab adds a linked child note and Enter adds a sibling note | 3 | Done (mind map only; no tables or cards) |
+| FR-I11 | An editor can switch private mode on: other people's sticky notes show dots and cannot be edited until it is switched off. It changes only what is shown | 3 | Done (cursor chat not built) |
+| FR-I12 | The start screen offers 9 templates: Blank, Brainstorm, Kanban, Flowchart, Mind map, SWOT analysis, Retrospective, Weekly planner, Presentation | 3 | Done |
+
+### 10.2 Limits and non-functional requirements added
+
+| ID | Requirement |
+| --- | --- |
+| NFR-I1 | A picture is stored as at most 150,000 characters in the browser; the live server accepts an image object up to 200,000 characters and any other object up to 64,000 |
+| NFR-I2 | A comment message has at most 500 characters and a comment at most 50 messages |
+| NFR-I3 | A board keeps at most 5 versions, and all versions of one board together stay under 8,000,000 characters; large boards keep fewer, the newest always stays |
+| NFR-I4 | One person has at most 5 votes per board; one person can send at most one reaction per 0.4 seconds |
+| NFR-I5 | Undo, redo and restoring a version never remove the timer or reactions that exist at that moment |
+| NFR-I6 | Comments, votes, the timer, reactions and the private-mode switch are not board content: they are skipped by the selection box, copy and paste, Fit, PNG export and dashboard thumbnails |
+| NFR-I7 | The browser, the live server and the API must accept the same 12 object types: sticky, shape, stroke, text, image, frame, comment, vote, timer, reaction, settings, connector |
+
+### 10.3 Known limitations
+
+- Two people replying to the same comment at the same moment: the last reply wins.
+- Private mode is a display feature, not security: hidden text still reaches every browser.
+- The timer follows each computer's clock, so screens can differ by a few seconds.
+- Only the board owner can save and restore versions.
+- A reaction can stay on the board if its sender closes the tab at once; the next person who reacts clears it.
+- Presenting and restoring on a live board were tested in one browser window; a test with two live windows on the real Cloudflare Worker is still to do.
+
 ### Approval
 
 | Name | Role | Signature | Date |

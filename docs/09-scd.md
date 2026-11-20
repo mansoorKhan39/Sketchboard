@@ -429,3 +429,55 @@ All 27 pass. Browser checks use Playwright with headless Chromium (two windows e
 | Cloudflare production deployment | Not yet done |
 
 The three unchecked rows are the first things to test after following `DEPLOY.md`.
+
+## Appendix: Update for Stages 6–11
+
+This appendix lists the code added after the main document. All paths are inside `web/` unless they start with `realtime/`.
+
+### A. New and changed files
+
+| File | What it does |
+| --- | --- |
+| `src/types.ts` | Added `ImageObj`, `FrameObj`, `CommentObj`, `CommentMessage`, `VoteObj`, `TimerObj`, `ReactionObj`, `SettingsObj`; sticky got optional `by` |
+| `src/kinds.ts` | `isOverlay()` (comment, vote, timer, reaction, settings), `isTransient()`, `withLiveParts()` |
+| `src/extras.ts` | Timer maths (`timerLeft`, `startTimer`, `pauseTimer`, `resetTimer`), votes (`votesOn`, `myVotes`, `newVote`, `MAX_VOTES`), reactions, private mode (`isPrivate`, `togglePrivate`, `isHiddenFrom`), `voterId()` |
+| `src/comments.ts` | Message limits (`MAX_COMMENT_CHARS` 500, `MAX_THREAD` 50), `newMessage()` |
+| `src/image.ts` | Shrinks and stores pictures (`fileToImage`, `placeImages`, `MAX_IMAGE_CHARS` 150,000) |
+| `src/exportPng.ts` | `registerStage()` and `exportPng()` |
+| `src/geometry.ts` | Added `fitInside`, `contentBounds`, `sortedFrames`, `frameFit`, `insideFrame` |
+| `src/store.ts` | Added `present`, `commentId`; actions `startPresent`, `stepPresent`, `stopPresent`, `setCommentId`, `restoreObjects`, `liveEdit`, `castVotes`, `withdrawVotes`, `addChildNode`, `addSiblingNode`; a board that was never moved opens fitted |
+| `src/templates.ts` | 9 templates (5 new) |
+| `src/repo.ts`, `src/persist.ts`, `src/api.ts` | Version history for guest and signed-in boards |
+| `src/useShortcuts.ts` | Keys F, C, Tab, Enter, paste of pictures, presentation keys |
+| `src/components/Presenter.tsx` | Presentation overlay and bar |
+| `src/components/CommentLayer.tsx` | Comment pins and threads |
+| `src/components/HistoryPanel.tsx` | Version list, save and restore |
+| `src/components/Extras.tsx` | `VoteLayer`, `ReactionLayer`, `ExtrasBar`, `TimerBar`, `VoteButtons` |
+| `src/components/Canvas.tsx`, `ObjectNode.tsx`, `Toolbar.tsx`, `TopBar.tsx`, `PropertiesPanel.tsx`, `BoardThumb.tsx`, `TextEditor.tsx`, `EmptyHint.tsx`, `App.tsx` | Frame and comment tools, frame drag, private-mode masking, new buttons, overlay handling |
+| `api/_lib/versions.ts` | `addVersion()`, `MAX_VERSIONS` 5, `MAX_VERSION_BYTES` 8,000,000 |
+| `api/_lib/types.ts`, `store.ts`, `mongo-store.ts`, `core.ts` | `VersionRec`, `getVersions`/`setVersions` (memory, file and MongoDB), three version routes, 12-type list |
+| `realtime/src/validate.ts`, `protocol.ts` | 12-type list; image limit 200,000 characters |
+
+### B. Store rules worth knowing
+
+- `addChildNode(parentId, voter)` puts a 180 × 110 note 100 px right of the parent, under earlier children, and links it with a connector. `addSiblingNode(id, voter)` finds the parent through the connector that ends at the note and adds a child there; with no parent it returns null.
+- `castVotes(ids, voter)` adds one vote per selected object until the person has 5 in total; connectors, frames and overlay objects cannot be voted on. `withdrawVotes` removes one of the person's votes from each selected object.
+- `restoreObjects(objects)` is a normal undoable edit that keeps the current timer and reactions.
+- `removeSelected` also removes connectors and votes that pointed at a removed object.
+- Viewers are blocked by `canEditNow` in every action above.
+
+### C. Tests
+
+`npm test` runs **57** tests (all pass). The 30 added after the first version of this document are in `api/_tests/api.test.ts` (1: picture round trip), `api/_tests/versions.test.ts` (5), `src/pictures.test.ts` (4), `src/frames.test.ts` (4), `src/comments.test.ts` (4), `src/extras.test.ts` (7) and `src/mindmap.test.ts` (5). `mindmap.test.ts` gives Node a small pretend browser (`window`, `localStorage`) so the store and the templates can be loaded.
+
+Browser scripts in `web/e2e/` (run `npm run dev` first, then `NODE_PATH=$(npm root -g) node e2e/<name>.cjs`): `e2e-images.cjs` (pictures and PNG), `e2e-frames.cjs` (20 checks), `e2e-comments.cjs` (11), `e2e-history.cjs` (19, guest and signed-in), `e2e-extras.cjs` (21), `e2e-stage11.cjs` (13), plus `e2e-solo.cjs` and `e2e-rt.cjs` from before (`e2e-rt.cjs` needs the Worker running).
+
+### D. Checklist: adding a new object type
+
+1. Add the interface and put it in `BoardObject` in `src/types.ts`.
+2. Add the type name in the three lists: `ObjType` in both copies of `protocol.ts` (`web/src/realtime/` and `realtime/src/`), `TYPES` in `realtime/src/validate.ts`, and the zod list in `api/_lib/core.ts`.
+3. If it has no size or is drawn as HTML, add it to `OVERLAY` in `src/kinds.ts` (and to `Overlay`); if it belongs to the present moment rather than the drawing, also to `isTransient`.
+4. Draw it: `ObjectNode.tsx` for canvas objects, or a layer component for overlays; handle it in `BoardThumb.tsx` and `TextEditor.tsx`.
+5. Decide what select, copy, delete and export should do with it (`Canvas.tsx`, `store.ts`, `geometry.ts`).
+6. If the object can be large, check the per-object limit in `realtime/src/validate.ts`.
+7. Add unit tests and, if it has screens, a browser script; run `npm test`, `npx tsc -b` and `npm run build`; redeploy the Worker.

@@ -10,7 +10,7 @@ For students, small teams and early-stage groups in Pakistan, a paid per-seat to
 
 ## 2. Proposed solution and objectives
 
-We propose Sketchboard, a free web whiteboard with an infinite canvas, sticky notes, shapes, pen, text and connectors, where many people edit the same board live. It follows the familiar Miro-style workflow but uses its own name, design and code.
+We propose Sketchboard, a free web whiteboard with an infinite canvas, sticky notes, shapes, pen, text, connectors, pictures, frames and comments, where many people edit the same board live and can also present, vote, run a timer and build mind maps. It follows the familiar Miro-style workflow but uses its own name, design and code.
 
 | No. | Objective | How we will know |
 | --- | --- | --- |
@@ -20,16 +20,17 @@ We propose Sketchboard, a free web whiteboard with an infinite canvas, sticky no
 | 4 | Run the whole system at zero cost | No paid plan and no credit card used anywhere |
 | 5 | Produce full professional documentation | The 14 documents are completed and kept consistent with the code |
 | 6 | Learn and explain the system end to end | The author can explain and modify every part without help |
+| 7 | Add the Phase 2 and Phase 3 features: pictures with Export PNG, frames with presentation mode, comments, version history, timer, voting, reactions, mind map, private mode and 9 templates | Each feature has requirements in the SRS and passes the automated tests and browser checks |
 
 ## 3. Scope and target users
 
-The work is split into three phases, defined in detail in the SRS. Only Phase 1 is promised for submission; later phases are added as time allows.
+The work is split into three phases, defined in detail in the SRS. Phase 1 was the promised part. Phases 2 and 3 were added afterwards and are now built (Stages 6 to 11 in the work plan).
 
 | Phase | Content |
 | --- | --- |
 | 1 (MVP) | Canvas, sticky notes, shapes, pen, text, connectors, live collaboration, accounts, save, share link |
-| 2 | Frames, comments, image upload, presentation mode, export, roles, version history |
-| 3 | Timer, voting, private mode, reactions, templates, mind map |
+| 2 | Pictures (add, drag and drop, paste) with Export PNG, frames with presentation mode, comments, version history (last 5 versions, with restore), roles |
+| 3 | Timer, voting (5 votes per person), emoji reactions, mind map (Tab and Enter keys), private mode, 9 templates |
 
 Not included: video chat, AI features, third-party integrations, enterprise controls and native mobile apps.
 
@@ -57,7 +58,7 @@ Vercel runs serverless functions, so it cannot hold the long-lived WebSocket con
 
 ## 5. Work plan
 
-Phase 1 is built in five stages, in this order. Dates are added once the course deadline is known.
+Phase 1 is built in five stages, in this order. Phases 2 and 3 follow as Stages 6 to 11. Dates are added once the course deadline is known.
 
 1. Documents first: proposal, feasibility, SRS, use cases, then design documents (SDA, database, API, UI/UX)
 2. Stage 1, canvas: pan, zoom, shapes, sticky notes, pen, text
@@ -65,6 +66,7 @@ Phase 1 is built in five stages, in this order. Dates are added once the course 
 4. Stage 3, live sync: Cloudflare realtime room, live cursors, conflict-free merging
 5. Stage 4, accounts and sharing: sign up, log in, save boards, share link and roles
 6. Stage 5, release: testing, deployment on Vercel and Cloudflare, user manual and maintenance notes
+7. Stages 6 to 11, added later: pictures and Export PNG (6), frames and presentation mode (7), comments (8), version history (9), timer, voting and reactions (10), mind map, private mode and 9 templates (11)
 
 Test plan, test cases and the deployment, user and maintenance documents are finished after the matching code exists, so they describe the real system and not a guess.
 
@@ -72,7 +74,7 @@ Test plan, test cases and the deployment, user and maintenance documents are fin
 
 | Risk | Likelihood | Impact | Plan |
 | --- | --- | --- | --- |
-| Scope is too big for one semester | High | High | Promise only Phase 1; Phases 2 and 3 are optional |
+| Scope is too big for one semester | High | High | Promise only Phase 1 first; Phases 2 and 3 were added later and are now built |
 | A free plan changes or ends | Medium | High | Keep the realtime service replaceable; recheck limits before deployment |
 | Free daily request limit is hit during a demo | Medium | Medium | Test with realistic traffic; keep a local run as backup |
 | Live editing conflicts corrupt boards | Medium | High | Use a conflict-free data model and test with two or more users early |

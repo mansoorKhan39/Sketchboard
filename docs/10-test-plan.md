@@ -2,7 +2,7 @@
 
 Nov 16, 2026 · @Mansoor
 
-This plan says what will be tested in Sketchboard, how, with which tools, and when testing is considered finished. It covers Stage 5 of the code (whiteboard, accounts, saving, sharing, live collaboration).
+This plan says what will be tested in Sketchboard, how, with which tools, and when testing is considered finished. It covers the code up to Stage 11: whiteboard, accounts, saving, sharing, live collaboration, pictures and Export PNG, frames and presentation, comments, version history, timer, voting and reactions, mind map, private mode and templates.
 
 ## 1. Introduction
 
@@ -45,7 +45,7 @@ This plan says what will be tested in Sketchboard, how, with which tools, and wh
 **Features not tested**
 
 - Real hosting accounts: MongoDB Atlas, Vercel and Cloudflare production. These are checked once by the developer after following `DEPLOY.md` (see risks in section 7).
-- Phase 2 and 3 features (frames, comments, image upload, presentation mode, export). They are not built.
+- A separate file store for pictures. It does not exist on free hosting: a picture is kept inside the board object (see the limits in section 2).
 - Heavy load with many hundreds of people on one board. Only the rate limit logic is tested, not capacity.
 - Mobile touch gestures beyond the basics, and Safari. Only Chromium is automated.
 - Password reset and email verification (not built).
@@ -60,8 +60,8 @@ Testing goes from small and fast to large and slow. A fault should be caught at 
 
 | Level | What it tests | How | Automated |
 | --- | --- | --- | --- |
-| Unit | Single functions with no network: `diffOps`, `applyOps` | `node:test` through `tsx` | Yes (8 tests) |
-| API (component) | The whole API core called directly with a memory store: accounts, boards, sharing, join passes | `node:test`, no server needed | Yes (19 tests) |
+| Unit | Single functions with no network: `diffOps`, `applyOps` | `node:test` through `tsx` | Yes (32 tests: 8 operation tests and 24 feature-logic tests) |
+| API (component) | The whole API core called directly with a memory store: accounts, boards, sharing, join passes | `node:test`, no server needed | Yes (25 tests) |
 | Integration | Website + API + file store together; Worker + Room on the real Workers runtime (`wrangler dev`) | Playwright and a local Worker | Yes (scripts) |
 | System | Complete user stories end to end in a real browser, with two windows for collaboration | Playwright, headless Chromium | Yes (scripts) |
 | Acceptance | Developer uses the app and compares with the SRS and use cases | Manual, with screenshots | No |
@@ -105,7 +105,7 @@ Testing goes from small and fast to large and slow. A fault should be caught at 
 **Test data**
 
 - Accounts: made up by the tests, for example `a@test.dev`, `b@test.dev`, password of 8 or more characters. No real personal data is used.
-- Boards: created by the test or from the templates (Blank, Brainstorm, Kanban, Flowchart).
+- Boards: created by the test or from the templates (Blank, Brainstorm, Kanban, Flowchart, Mind map, SWOT analysis, Retrospective, Weekly planner, Presentation with 3 frames).
 - Limits: generated boards with 5,000 and 5,001 objects, and a 3 MB body.
 - Reset: delete `web/.data` and restart the dev server before each browser run so old accounts do not cause a duplicate-email error.
 
@@ -121,7 +121,7 @@ Testing goes from small and fast to large and slow. A fault should be caught at 
 
 **Exit (a release is accepted when)**
 
-- All automated tests pass (currently 27 of 27).
+- All automated tests pass (currently 57 of 57).
 - All browser scripts pass, including the reconnect fallback.
 - Every must-have requirement in the SRS has at least one passed test case.
 - No open defect of severity Critical or High; Medium defects are listed in the report with a plan.
@@ -150,7 +150,7 @@ If this is a group project, add the other members here.
 
 **Schedule.** Dates are to be set with the supervisor's deadline. Order of work:
 
-1. Run `npm test` and the browser scripts on the delivered Stage 5 code.
+1. Run `npm test` and the browser scripts on the delivered Stage 11 code.
 2. Fill the Test Cases and Reports document with the real results.
 3. Follow `DEPLOY.md` and run the deployment check on Atlas, Vercel and Cloudflare.
 4. Usability session with trial users.
@@ -227,4 +227,40 @@ Every feature area has a test layer, so no requirement is left without a check. 
 | MongoDB Atlas store |  |  |  | Not yet run |
 | Vercel and Cloudflare deployment |  |  |  | Not yet run |
 
-**Summary of results so far:** 27 of 27 automated tests pass (12 account and board API, 7 sharing API, 8 operation tests), and the browser scripts for solo drawing, two-window collaboration and the reconnect fallback pass on the local setup. Detailed results are in the next document.
+**Summary of results so far:** 57 of 57 automated tests pass (13 account, board and picture API, 7 sharing API, 5 version API, 8 operation tests and 24 feature-logic tests for pictures, frames, comments, timer, votes, reactions, mind map, private mode and templates), and the browser scripts for solo drawing, two-window collaboration and the reconnect fallback pass on the local setup. Detailed results are in the next document.
+
+## Appendix: Update for Stages 6–11
+
+### Added scope
+
+Pictures, frames and Present mode, comments, version history, timer, voting and reactions, mind map keys, private mode and five new templates.
+
+### Test inventory now
+
+| Level | Files | Tests |
+| --- | --- | --- |
+| API | `api.test.ts` (13), `share.test.ts` (7), `versions.test.ts` (5) | 25 |
+| Realtime operations | `ops.test.ts` | 8 |
+| Client logic | `pictures` (4), `frames` (4), `comments` (4), `extras` (7), `mindmap` (5) | 24 |
+| **Total** | run with `npm test` in `web/` | **57** |
+
+Browser scripts (Playwright, in `web/e2e/`): images, frames (20 checks), comments (11), history (19), extras (21), stage11 (13), plus solo and rt. The `rt` script needs `wrangler dev` running.
+
+### New risks and how they are tested
+
+| Risk | Test |
+| --- | --- |
+| Object type list out of sync in 3 places, so live editing refuses a type | Ops tests plus the rule in the Maintenance document |
+| Overlay objects counted in selection, export or Fit | `extras.test.ts`, `e2e-extras` |
+| Two people vote at once and one vote is lost | `extras.test.ts` (votes are separate objects) |
+| Version list grows past the 16 MB document limit | `versions.test.ts` (newest 5, 8,000,000 char cap) |
+| Restore breaks undo or live sync | `e2e-history` |
+| Viewer can comment, vote or restore | `comments.test.ts`, `e2e-comments`, `versions.test.ts` |
+
+### Not covered by automation
+
+Two-window live sync of the new features, real Atlas, real Vercel and Cloudflare. These are manual cases (TC-C23–C28, TC-D09–D14).
+
+### Exit criteria
+
+All automated tests pass (met). No open Critical or High defect (met). Deployment checks run at least once (not met).

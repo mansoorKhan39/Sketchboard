@@ -139,3 +139,23 @@ The server checks these rules on every read and write; hiding a button is never 
 | Rename the board | No | No | No | No | Yes |
 | Delete the board | No | No | No | No | Yes |
 | See the dashboard of own boards | No | No | Registered only | Registered only | Yes |
+
+## 8. Update for Stages 6–11 (as built)
+
+The Phase 2 and Phase 3 use cases are built. Where the built flow differs from section 6, this section is the current one.
+
+| ID | Use case | Built flow | Difference from the plan |
+| --- | --- | --- | --- |
+| UC-08 | Present frames | Owner or Editor presses Present (or Present from here on a frame); the view moves to each frame; arrows, Space, PageUp/PageDown change slide; Esc or Exit ends. Viewers can present too | As planned. Editing and all toolbars are blocked while presenting |
+| UC-09 | Export a board | User presses Export PNG; a PNG of all content downloads. An empty board shows a message | PNG only, whole board only (no PDF, no single frame) |
+| UC-10 | Comment on the board | User presses C and clicks the board; a pin appears and the thread opens; others reply (Enter), resolve, reopen or delete | The pin sits at a board position, not on an object. No @mentions. Viewers can read, not write |
+| UC-11 | Vote | User selects an object and presses Vote (up to 5 votes in total); Remove takes one back; a badge shows the count | Not timed: voting is always open. The timer is a separate use case (UC-15) |
+| UC-12 | Add a picture | User presses the image button, drops a file or pastes with Ctrl+V; the browser shrinks it and it appears on the board | New (the plan only said image upload) |
+| UC-13 | Save and restore a version | Owner opens History, presses Save a version now; later picks Restore and confirms; the board is replaced and can be undone with Ctrl+Z | Newest 5 versions only. A Before restore copy is saved automatically |
+| UC-14 | React | User presses an emoji in the bottom bar; it floats up for about 3.5 seconds | New |
+| UC-15 | Run a timer | Editor presses Timer, picks a length, presses Start; Pause and Reset are available; at zero it beeps | Not tied to voting |
+| UC-16 | Build a mind map | User selects a note and presses Tab for a child or Enter for a sibling; each new note is linked and ready to type | Mind map only |
+| UC-17 | Switch private mode | Editor presses Private; other people's notes show dots until it is switched off | Display only, not security |
+| UC-18 | Start from a template | User picks one of 9 templates on the start screen; the board opens fitted to its content | Five templates added to the original four (Mind map, SWOT, Retrospective, Weekly planner, Presentation) |
+
+**Alternative flows common to these use cases.** A viewer sees the board but the tools for adding or changing are hidden or refused. A guest board keeps its own history in the browser; a signed-in board keeps it on the server. If the browser has no space left for a picture or a version, a message says so and nothing is lost.

@@ -300,3 +300,59 @@ The REST paths start with `/api/v1`. A change that breaks existing clients (remo
 - Each endpoint in sections 3 to 5 gets at least one test for success and one for each listed error. These go into the Test Plan and the test cases.
 - Quick manual check while building: send the example requests above with `curl` or a tool such as Postman, using a cookie jar so the session cookie is kept.
 - The realtime API is tested with two or more real browser tabs, plus a small script that sends the example messages and checks the replies.
+
+## Appendix: Update for Stages 6–11 (version history endpoints)
+
+Three endpoints were added. All follow the existing rules: JSON bodies, the cookie session, the header `x-sketchboard: 1` on POST, and errors shaped as `{ "error": { "code", "message" } }`. Only the board owner can use them; for anyone else the board does not exist (404), and without a session the answer is 401.
+
+| Method | Path | Purpose | Success |
+| --- | --- | --- | --- |
+| GET | `/api/v1/boards/:id/versions` | List saved versions, newest first, without content | 200 |
+| POST | `/api/v1/boards/:id/versions` | Save a version of the board | 201 |
+| GET | `/api/v1/boards/:id/versions/:versionId` | Read the objects of one version | 200 |
+
+### GET /api/v1/boards/:id/versions
+
+```json
+{ "versions": [ { "id": "k3Jd8sLq0a", "at": 1763540000000, "label": "Saved version", "count": 12 } ] }
+```
+
+`count` is the number of objects. The list is empty for a board with no versions.
+
+### POST /api/v1/boards/:id/versions
+
+Request body:
+
+```json
+{ "label": "Saved version", "objects": [ ] }
+```
+
+- `label` is optional, up to 60 characters; the default is Saved version.
+- `objects` is the board content to keep: at most 5,000 objects and about 3 MB, each object valid as in board saving (12 allowed types).
+- The server keeps the newest 5 versions and drops older ones; if all versions together pass 8,000,000 characters it drops more old ones. The new version is always kept.
+- The answer is the updated list in the same shape as GET (newest first), status 201.
+
+### GET /api/v1/boards/:id/versions/:versionId
+
+```json
+{ "objects": [ ] }
+```
+
+A version id that does not exist (or was dropped) gives 404 with code `not_found`.
+
+### Errors
+
+| Status | Code | When |
+| --- | --- | --- |
+| 400 | invalid\_input | Body is not valid: objects is not a list, an object has an unknown type, label is too long |
+| 401 | unauthorized | No valid session |
+| 403 | csrf | POST without the `x-sketchboard: 1` header |
+| 404 | not\_found | Board belongs to someone else or does not exist; version does not exist |
+| 413 | too\_large | The objects together are over about 3 MB (more than 5,000 objects is a 400 invalid\_input) |
+
+### Other changes
+
+- The object `type` accepted by board saving and by the live server is now one of 12 values: sticky, shape, stroke, text, image, frame, comment, vote, timer, reaction, settings, connector. Any other value gives 400.
+- Deleting a board also deletes its versions. Duplicating a board does not copy them.
+- The live server limit per object is 64,000 characters, and 200,000 characters for `image`.
+- Restoring a version has no endpoint: the browser reads the version, then applies it to the board as a normal edit.

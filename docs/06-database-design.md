@@ -199,3 +199,53 @@ The id, type, z order, deleted flag and creator are kept in their own columns (s
 - [MongoDB Atlas pricing and free tier](https://mongodb.com/pricing)
 - [MongoDB community, request limit in the free tier](https://www.mongodb.com/community/forums/t/request-limit-in-the-free-tier/9804)
 - [Cloudflare, Durable Objects pricing and storage](https://developers.cloudflare.com/durable-objects/platform/pricing)
+
+## Appendix: Update for Stages 6–11
+
+The `boards` and `users` collections are unchanged. One new collection was added, and the object list inside a board has new types.
+
+### A. New collection: `versions`
+
+| Field | Type | Meaning |
+| --- | --- | --- |
+| `_id` | string | The board id. One document per board, so no extra index is needed |
+| `versions` | array | Saved copies, oldest first |
+| `versions[].id` | string | Version id (10 characters) |
+| `versions[].at` | number | Time saved (milliseconds since 1970) |
+| `versions[].label` | string | Up to 60 characters, for example Saved version or Before restore |
+| `versions[].objects` | array | The board's objects at that time |
+
+Rules: at most 5 versions per board; if the objects of all versions together pass 8,000,000 characters the oldest are dropped until they fit (the newest always stays). The document is created on the first save and deleted when the board is deleted. Duplicating a board does not copy versions. Guest boards keep the same structure in the browser under `sketchboard.versions.v1.<board id>`.
+
+### B. New object types inside `boards.objects`
+
+Every object has `id`, `type`, `x`, `y`, `width`, `height`, `rotation`. The size limits are 64,000 characters per object (200,000 for an image), 5,000 objects and about 3 MB per board.
+
+| Type | Extra fields | Notes |
+| --- | --- | --- |
+| image | `src` (compressed data URL, up to 150,000 characters), `name` | Browser shrinks before saving |
+| frame | `text` (title), `slide` (number) | Default 640 × 360; presentation order is slide, then id |
+| comment | `thread` (up to 50 messages of `id`, `author`, `text` up to 500 characters, `at`), `resolved` | Width and height are 0; x, y is the pin tip |
+| vote | `targetId`, `voter` | One object per vote; width and height 0. Removed when the target is removed |
+| timer | `seconds`, `endsAt` (time or null), `left` | At most one per board |
+| reaction | `emoji`, `at` | Short-lived, removed after a few seconds |
+| settings | `private` (true or false) | At most one per board |
+| sticky (changed) | optional `by` | Id of the author (account id or guest id), used by private mode |
+
+`comment`, `vote`, `timer`, `reaction` and `settings` are overlay objects: they are saved with the board but are not board content for selection, export or thumbnails.
+
+### C. Example (a board with a frame, a note and a vote)
+
+```json
+{
+  "objects": [
+    { "id": "f1", "type": "frame", "x": 0, "y": 0, "width": 640, "height": 360, "rotation": 0, "text": "Frame 1", "slide": 1 },
+    { "id": "s1", "type": "sticky", "x": 40, "y": 60, "width": 180, "height": 180, "rotation": 0, "text": "Idea", "color": "#FFD43B", "by": "u_123" },
+    { "id": "v1", "type": "vote", "x": 0, "y": 0, "width": 0, "height": 0, "rotation": 0, "targetId": "s1", "voter": "u_123" }
+  ]
+}
+```
+
+### D. Size planning
+
+A board of pictures can reach the 3 MB board limit quickly (a shrunk picture is about 100 to 150 KB). Versions multiply that: a board near 3 MB keeps about 2 versions inside the 8,000,000 character cap. The free MongoDB Atlas plan has 512 MB, so roughly 50 such boards with full history fit before it is full (about 9 MB each); normal text boards use far less.
