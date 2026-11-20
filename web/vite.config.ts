@@ -3,7 +3,7 @@ import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 
 // In development, `npm run dev` serves the website AND the API on the same port.
-// (In production, Vercel runs api/v1/[...path].ts instead.) Data is kept in .data/db.json.
+// (In production, Vercel runs api/v1.ts instead.) Data is kept in .data/db.json.
 function devApi(): Plugin {
   return {
     name: "sketchboard-dev-api",

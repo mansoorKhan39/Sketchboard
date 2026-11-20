@@ -50,7 +50,7 @@ Going online: see `DEPLOY.md` (Atlas + Vercel + Cloudflare, free, no card).
 - `_lib/core.ts` — all routes: `/auth/register|login|logout|me`, `/boards` (list, create), `/boards/:id` (get, PUT save, PATCH rename, DELETE), `/boards/:id/duplicate`
 - `_lib/security.ts` — password hashing (scrypt) and signed session token
 - `_lib/store.ts` / `mongo-store.ts` — the database behind one small interface (memory, JSON file, MongoDB)
-- `_lib/node-adapter.ts` — plugs the API into `npm run dev`; `v1/[...path].ts` — the Vercel entry
+- `_lib/node-adapter.ts` — plugs the API into `npm run dev`; `v1.ts` — the Vercel entry
 - `_tests/api.test.ts` — tests
 
 ## Files (src/)
