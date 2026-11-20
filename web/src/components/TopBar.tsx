@@ -4,6 +4,8 @@ import { flushSave, useBoard } from "../store";
 import ThemeToggle from "./ThemeToggle";
 import ShareDialog from "./ShareDialog";
 import Logo from "./Logo";
+import { exportPng } from "../exportPng";
+import HistoryPanel from "./HistoryPanel";
 
 export default function TopBar() {
   const go = useUI((s) => s.go);
@@ -14,9 +16,11 @@ export default function TopBar() {
   const mode = useBoard((s) => s.mode);
   const peers = useBoard((s) => s.peers);
   const notice = useBoard((s) => s.notice);
+  const hasFrames = useBoard((s) => s.objects.some((o) => o.type === "frame"));
   const canRename = mode === "owned" && role !== "viewer";
   const [name, setName] = useState(storedName);
   const [share, setShare] = useState(false);
+  const [history, setHistory] = useState(false);
   const shareRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -114,17 +118,55 @@ export default function TopBar() {
             )}
           </div>
         )}
+        {mode === "owned" && role !== "viewer" && (
+          <button
+            onClick={() => {
+              setShare(false);
+              setHistory((h) => !h);
+            }}
+            data-testid="history"
+            title="Save and restore earlier versions of this board"
+            className="h-9 rounded-lg border border-line px-3 text-sm font-medium hover:border-brand hover:bg-brand-soft"
+          >
+            History
+          </button>
+        )}
+        {hasFrames && (
+          <button
+            onClick={() => useBoard.getState().startPresent()}
+            data-testid="present"
+            title="Show the frames one by one"
+            className="h-9 rounded-lg border border-line px-3 text-sm font-medium hover:border-brand hover:bg-brand-soft"
+          >
+            Present
+          </button>
+        )}
+        <button
+          onClick={() => {
+            const err = exportPng(name || "board");
+            if (err) {
+              useBoard.setState({ notice: err });
+              setTimeout(() => useBoard.getState().notice === err && useBoard.setState({ notice: "" }), 4000);
+            }
+          }}
+          data-testid="export-png"
+          title="Save the board as a PNG picture"
+          className="h-9 rounded-lg border border-line px-3 text-sm font-medium hover:border-brand hover:bg-brand-soft"
+        >
+          Export PNG
+        </button>
         <ThemeToggle />
         {role === "viewer" && <span data-testid="viewer-badge" className="rounded-lg bg-sunken px-2.5 py-1 text-xs font-medium text-muted">View only</span>}
         {mode === "owned" && (
           <button
-            onClick={() => setShare((s) => !s)}
+            onClick={() => { setHistory(false); setShare((s) => !s); }}
             data-testid="share"
             className="h-9 rounded-lg bg-brand px-4 text-sm font-medium text-white transition hover:bg-brand-strong"
           >
             Share
           </button>
         )}
+        {history && <HistoryPanel onClose={() => setHistory(false)} />}
         {share && (
           <div className="absolute right-0 top-14 w-80 rounded-xl border border-line bg-surface p-4 shadow-float" data-testid="share-panel">
             <ShareDialog />

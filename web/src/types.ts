@@ -1,5 +1,5 @@
 // Object model — mirrors the Database Design document (shared fields + one shape per type).
-export type Tool = "select" | "sticky" | "shape" | "pen" | "text" | "connector";
+export type Tool = "select" | "sticky" | "shape" | "pen" | "text" | "connector" | "frame" | "comment";
 export type ShapeKind = "rect" | "ellipse" | "diamond";
 
 interface Base {
@@ -15,6 +15,7 @@ export interface Sticky extends Base {
   type: "sticky";
   text: string;
   color: string;
+  by?: string; // who made it (user id or guest id) — used by private mode
 }
 
 export interface Shape extends Base {
@@ -40,6 +41,62 @@ export interface TextObj extends Base {
   color: string;
 }
 
+// A picture. `src` is a small compressed data URL, so the image travels inside the board like any other object.
+export interface ImageObj extends Base {
+  type: "image";
+  src: string;
+  name: string;
+}
+
+// A frame is a titled area (a "slide"). Presentation mode shows frames one by one, ordered by `slide`.
+export interface FrameObj extends Base {
+  type: "frame";
+  text: string; // the title
+  slide: number;
+}
+
+export interface CommentMessage {
+  id: string;
+  author: string;
+  text: string;
+  at: number; // time sent (ms since 1970)
+}
+
+// A comment pin. (x, y) is the pin's tip; width/height are 0. It is drawn as HTML, not on the Konva canvas.
+export interface CommentObj extends Base {
+  type: "comment";
+  thread: CommentMessage[];
+  resolved: boolean;
+}
+
+// A vote (a dot on an object). One object per vote, so two people voting at once never overwrite each other.
+export interface VoteObj extends Base {
+  type: "vote";
+  targetId: string;
+  voter: string; // user id, or a guest id kept in the browser
+}
+
+// The board's countdown timer. endsAt is a clock time while running; `left` is the seconds left while stopped.
+export interface TimerObj extends Base {
+  type: "timer";
+  seconds: number; // chosen length
+  endsAt: number | null;
+  left: number;
+}
+
+// A floating emoji. Lives a few seconds, then it is removed.
+export interface ReactionObj extends Base {
+  type: "reaction";
+  emoji: string;
+  at: number;
+}
+
+// Board-wide switches. For now: private mode, which hides other people's sticky notes on screen.
+export interface SettingsObj extends Base {
+  type: "settings";
+  private: boolean;
+}
+
 // A connector links two objects. x/y/width/height are unused (0) — its line is computed from the two objects.
 export interface Connector extends Base {
   type: "connector";
@@ -50,8 +107,8 @@ export interface Connector extends Base {
   color: string;
 }
 
-export type BoardObject = Sticky | Shape | Stroke | TextObj | Connector;
-export type Placeable = Exclude<BoardObject, Connector>; // everything that has a real position on the board
+export type BoardObject = Sticky | Shape | Stroke | TextObj | ImageObj | FrameObj | CommentObj | VoteObj | TimerObj | ReactionObj | SettingsObj | Connector;
+export type Placeable = Exclude<BoardObject, Connector | CommentObj | VoteObj | TimerObj | ReactionObj | SettingsObj>; // everything that has a real position on the board
 
 export interface Viewport {
   x: number;

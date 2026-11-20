@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { nanoid } from "nanoid";
-import type { BoardObject, Tool, Viewport } from "./types";
+import type { BoardObject, Connector, Placeable, Sticky, Tool, Viewport } from "./types";
 import { getRepo } from "./repo";
 import { useUI } from "./ui";
 import { api, ApiError } from "./api";
@@ -8,6 +8,9 @@ import { applyOps, diffOps } from "./realtime/ops";
 import { isActive, sendOps, startRealtime, stopRealtime } from "./realtime/connection";
 import type { Op, Peer, Role } from "./realtime/protocol";
 import { MAX_SCALE, MIN_SCALE } from "./constants";
+import { sortedFrames } from "./geometry";
+import { isOverlay, withLiveParts } from "./kinds";
+import { MAX_VOTES, newVote } from "./extras";
 
 export type Connection = "off" | "connecting" | "live" | "offline";
 
@@ -33,6 +36,8 @@ interface BoardState {
   past: BoardObject[][];
   future: BoardObject[][];
   clipboard: BoardObject[];
+  commentId: string | null; // comment whose thread is open
+  present: { index: number; back: Viewport } | null; // presentation mode: which frame is on screen, and the view to return to
 
   openBoard: (id: string) => Promise<"ok" | "missing" | "stale">;
   openShared: (token: string) => Promise<"ok" | "missing" | "unavailable" | "stale">;
@@ -52,9 +57,19 @@ interface BoardState {
   duplicateSelected: () => void;
   copy: () => void;
   paste: () => void;
+  restoreObjects: (objects: BoardObject[]) => void;
+  addChildNode: (parentId: string, voter: string) => string | null; // mind map: a new note linked to this one
+  addSiblingNode: (id: string, voter: string) => string | null;
+  liveEdit: (change: (objects: BoardObject[]) => BoardObject[]) => void; // a change that is not part of undo history (timer, reactions)
+  castVotes: (ids: string[], voter: string) => void;
+  withdrawVotes: (ids: string[], voter: string) => void;
   undo: () => void;
   redo: () => void;
   fitToContent: (w: number, h: number) => void;
+  setCommentId: (id: string | null) => void;
+  startPresent: (fromId?: string) => void;
+  stepPresent: (delta: number) => void;
+  stopPresent: () => void;
 }
 
 const clampScale = (s: number) => Math.min(MAX_SCALE, Math.max(MIN_SCALE, s));
@@ -111,6 +126,8 @@ export const useBoard = create<BoardState>((set, get) => ({
   past: [],
   future: [],
   clipboard: [],
+  commentId: null,
+  present: null,
 
   openBoard: async (id) => {
     let data = null;
@@ -139,6 +156,11 @@ export const useBoard = create<BoardState>((set, get) => ({
       past: [],
       future: [],
     });
+    // a board that was never panned or zoomed (a fresh template, say) opens fitted to its content
+    const vp0 = data.viewport;
+    if (vp0.x === 0 && vp0.y === 0 && vp0.scale === 1 && data.objects.some((o) => !isOverlay(o))) {
+      get().fitToContent(window.innerWidth, window.innerHeight);
+    }
     // Signed-in users' boards open a live room (so others can join). If that is not possible the board simply works alone.
     if (getRepo().kind === "cloud") startRealtime(id, () => api.joinBoard(id));
     return "ok";
@@ -210,7 +232,7 @@ export const useBoard = create<BoardState>((set, get) => ({
   closeBoard: () => {
     void flushSave();
     stopRealtime();
-    set({ boardId: null, mode: "owned", sharedToken: null, loaded: false, role: "solo", objects: [], selectedIds: [], editingId: null, past: [], future: [], notice: "" });
+    set({ boardId: null, mode: "owned", sharedToken: null, loaded: false, role: "solo", objects: [], selectedIds: [], editingId: null, past: [], future: [], notice: "", present: null, commentId: null });
   },
 
   renameBoard: (name) => {
@@ -258,7 +280,10 @@ export const useBoard = create<BoardState>((set, get) => ({
       const gone = new Set(s.selectedIds);
       // a connector disappears together with either of the objects it joins
       const keep = s.objects.filter(
-        (o) => !gone.has(o.id) && !(o.type === "connector" && (gone.has(o.fromId) || gone.has(o.toId))),
+        (o) =>
+          !gone.has(o.id) &&
+          !(o.type === "connector" && (gone.has(o.fromId) || gone.has(o.toId))) &&
+          !(o.type === "vote" && gone.has(o.targetId)),
       );
       return { ...withHistory(s, keep), selectedIds: [] };
     }),
@@ -266,13 +291,13 @@ export const useBoard = create<BoardState>((set, get) => ({
   duplicateSelected: () =>
     set((s) => {
       if (!canEditNow(s)) return s;
-      const copies = s.objects.filter((o) => s.selectedIds.includes(o.id) && o.type !== "connector").map(cloneWithOffset);
+      const copies = s.objects.filter((o) => s.selectedIds.includes(o.id) && o.type !== "connector" && !isOverlay(o)).map(cloneWithOffset);
       if (!copies.length) return s;
       return { ...withHistory(s, [...s.objects, ...copies]), selectedIds: copies.map((c) => c.id) };
     }),
 
   copy: () =>
-    set((s) => ({ clipboard: s.objects.filter((o) => s.selectedIds.includes(o.id) && o.type !== "connector") })),
+    set((s) => ({ clipboard: s.objects.filter((o) => s.selectedIds.includes(o.id) && o.type !== "connector" && !isOverlay(o)) })),
 
   paste: () =>
     set((s) => {
@@ -285,12 +310,67 @@ export const useBoard = create<BoardState>((set, get) => ({
       };
     }),
 
+  // Version history: put an older copy of the board on screen. It is a normal, undoable edit,
+  // so everyone live on the board sees it too and Ctrl+Z brings the current board back.
+  restoreObjects: (objects) =>
+    set((s) => (canEditNow(s) ? { ...withHistory(s, withLiveParts(objects, s.objects)), selectedIds: [], editingId: null, commentId: null } : s)),
+
+  addChildNode: (parentId, voter) => {
+    const s = get();
+    if (!canEditNow(s)) return null;
+    const parent = s.objects.find((o) => o.id === parentId);
+    if (!parent || parent.type === "connector" || isOverlay(parent) || parent.type === "frame") return null;
+    const kids = s.objects
+      .filter((o): o is Connector => o.type === "connector" && o.fromId === parentId)
+      .map((c) => s.objects.find((o) => o.id === c.toId))
+      .filter((o): o is Placeable => !!o && o.type !== "connector" && !isOverlay(o));
+    const h = 110;
+    const y = kids.length ? Math.max(...kids.map((k) => k.y + k.height)) + 24 : parent.y + (parent.height - h) / 2;
+    const node: Sticky = {
+      id: nanoid(10), type: "sticky", x: parent.x + parent.width + 100, y, width: 180, height: h, rotation: 0, text: "",
+      color: parent.type === "sticky" ? parent.color : "#FFD43B", by: voter,
+    };
+    const link: Connector = {
+      id: nanoid(10), type: "connector", x: 0, y: 0, width: 0, height: 0, rotation: 0,
+      fromId: parentId, toId: node.id, lineStyle: "straight", endArrow: false, color: "#1F2937",
+    };
+    set((st) => ({ ...withHistory(st, [...st.objects, node, link]), selectedIds: [node.id] }));
+    return node.id;
+  },
+  addSiblingNode: (id, voter) => {
+    const up = get().objects.find((o): o is Connector => o.type === "connector" && o.toId === id);
+    return up ? get().addChildNode(up.fromId, voter) : null;
+  },
+
+  liveEdit: (change) => set((s) => (canEditNow(s) ? { objects: change(s.objects) } : s)),
+
+  castVotes: (ids, voter) =>
+    set((s) => {
+      if (!canEditNow(s)) return s;
+      const left = MAX_VOTES - s.objects.filter((o) => o.type === "vote" && o.voter === voter).length;
+      const targets = s.objects.filter((o) => ids.includes(o.id) && !isOverlay(o) && o.type !== "connector" && o.type !== "frame").slice(0, Math.max(0, left));
+      if (!targets.length) return s;
+      return withHistory(s, [...s.objects, ...targets.map((t) => newVote(t.id, voter))]);
+    }),
+
+  // takes back one of my votes from each selected object
+  withdrawVotes: (ids, voter) =>
+    set((s) => {
+      if (!canEditNow(s)) return s;
+      const drop = new Set<string>();
+      for (const id of ids) {
+        const mine = s.objects.filter((o) => o.type === "vote" && o.targetId === id && o.voter === voter);
+        if (mine.length) drop.add(mine[mine.length - 1].id);
+      }
+      return drop.size ? withHistory(s, s.objects.filter((o) => !drop.has(o.id))) : s;
+    }),
+
   undo: () =>
     set((s) => {
       const prev = s.past[s.past.length - 1];
       if (!prev || !canEditNow(s)) return s;
       return {
-        objects: prev,
+        objects: withLiveParts(prev, s.objects),
         past: s.past.slice(0, -1),
         future: [s.objects, ...s.future],
         selectedIds: s.selectedIds.filter((id) => prev.some((o) => o.id === id)),
@@ -301,11 +381,28 @@ export const useBoard = create<BoardState>((set, get) => ({
     set((s) => {
       const next = s.future[0];
       if (!next || !canEditNow(s)) return s;
-      return { objects: next, future: s.future.slice(1), past: [...s.past, s.objects] };
+      return { objects: withLiveParts(next, s.objects), future: s.future.slice(1), past: [...s.past, s.objects] };
     }),
 
+  setCommentId: (commentId) => set({ commentId }),
+  startPresent: (fromId) =>
+    set((s) => {
+      const frames = sortedFrames(s.objects);
+      if (!frames.length) return s;
+      const at = fromId ? frames.findIndex((f) => f.id === fromId) : 0;
+      return { present: { index: Math.max(0, at), back: s.viewport }, selectedIds: [], editingId: null, tool: "select" };
+    }),
+  stepPresent: (delta) =>
+    set((s) => {
+      if (!s.present) return s;
+      const n = sortedFrames(s.objects).length;
+      const index = Math.min(n - 1, Math.max(0, s.present.index + delta));
+      return { present: { ...s.present, index } };
+    }),
+  stopPresent: () => set((s) => (s.present ? { viewport: s.present.back, present: null } : s)),
+
   fitToContent: (w, h) => {
-    const objects = get().objects.filter((o) => o.type !== "connector");
+    const objects = get().objects.filter((o) => o.type !== "connector" && !isOverlay(o));
     if (!objects.length) return set({ viewport: { x: 0, y: 0, scale: 1 } });
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
     for (const o of objects) {

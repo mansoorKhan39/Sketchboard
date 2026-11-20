@@ -17,6 +17,13 @@ export interface CloudBoard {
   updatedAt: number;
 }
 
+export interface VersionInfo {
+  id: string;
+  at: number;
+  label: string;
+  count: number; // objects in that version
+}
+
 export interface JoinInfo {
   token: string; // short-lived pass for the realtime room
   wsUrl: string;
@@ -72,5 +79,8 @@ export const api = {
   getShare: (id: string) => call<{ share: ShareSettings | null }>("GET", `/boards/${id}/share`),
   setShare: (id: string, body: { enabled: boolean; right?: "viewer" | "editor"; regenerate?: boolean }) =>
     call<{ share: ShareSettings }>("PUT", `/boards/${id}/share`, body),
+  listVersions: (id: string) => call<{ versions: VersionInfo[] }>("GET", `/boards/${id}/versions`),
+  saveVersion: (id: string, objects: BoardObject[], label: string) => call<{ versions: VersionInfo[] }>("POST", `/boards/${id}/versions`, { objects, label }),
+  getVersion: (id: string, versionId: string) => call<{ objects: BoardObject[] }>("GET", `/boards/${id}/versions/${versionId}`),
   duplicateBoard: (id: string) => call<{ board: CloudBoard }>("POST", `/boards/${id}/duplicate`),
 };

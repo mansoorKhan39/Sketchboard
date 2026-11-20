@@ -1,3 +1,4 @@
+import { isOverlay } from "../kinds";
 import { useEffect, useRef } from "react";
 import { useBoard } from "../store";
 import { useUI } from "../ui";
@@ -20,7 +21,7 @@ export default function TextEditor() {
     return () => clearTimeout(t);
   }, [editingId]);
 
-  if (!editingId || !obj || obj.type === "stroke" || obj.type === "connector") return null;
+  if (!editingId || !obj || obj.type === "stroke" || obj.type === "connector" || obj.type === "image" || obj.type === "frame" || isOverlay(obj)) return null;
 
   const k = viewport.scale;
   const isText = obj.type === "text";

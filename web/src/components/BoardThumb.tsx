@@ -1,3 +1,4 @@
+import { isOverlay } from "../kinds";
 import type { BoardObject, Placeable } from "../types";
 import { INK_DEFAULT } from "../constants";
 
@@ -6,7 +7,7 @@ import { INK_DEFAULT } from "../constants";
 const paint = (c: string) => (c.toLowerCase() === INK_DEFAULT.toLowerCase() ? "currentColor" : c);
 
 export default function BoardThumb({ objects }: { objects: BoardObject[] }) {
-  const items = objects.filter((o): o is Placeable => o.type !== "connector");
+  const items = objects.filter((o): o is Placeable => o.type !== "connector" && !isOverlay(o));
   if (!items.length) {
     return (
       <div className="flex h-full w-full items-center justify-center text-xs text-muted">Empty board</div>
@@ -56,6 +57,9 @@ export default function BoardThumb({ objects }: { objects: BoardObject[] }) {
           const d = pts.reduce((acc, v, i) => (i % 2 === 0 ? `${acc}${i ? "L" : "M"}${v},` : `${acc}${v}`), "");
           return <path key={o.id} d={d} fill="none" stroke={paint(o.color)} strokeWidth={Math.max(o.lineWidth, sw)} strokeLinecap="round" strokeLinejoin="round" />;
         }
+        // picture: a soft grey block (the real picture is too heavy for a thumbnail)
+        if (o.type === "frame") return <rect key={o.id} x={o.x} y={o.y} width={o.width} height={o.height} rx={6} fill="none" stroke="currentColor" strokeWidth={4} opacity={0.3} />;
+        if (o.type === "image") return <rect key={o.id} x={o.x} y={o.y} width={o.width} height={o.height} rx={6} fill="currentColor" opacity={0.18} />;
         // text: a thin bar is enough to suggest a line of writing
         return <rect key={o.id} x={o.x} y={o.y + o.height * 0.3} width={Math.min(o.width, o.text.length * o.fontSize * 0.55 + 20)} height={o.fontSize * 0.5} rx={4} fill={paint(o.color)} opacity={0.75} />;
       })}

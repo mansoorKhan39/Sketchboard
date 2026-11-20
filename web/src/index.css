@@ -56,3 +56,11 @@ body {
 @media (prefers-reduced-motion: reduce) {
   * { transition-duration: 0.01ms !important; animation-duration: 0.01ms !important; }
 }
+
+/* a reaction drifts up and fades out */
+@keyframes reaction-float {
+  from { transform: translate(-50%, 0) scale(0.6); opacity: 0; }
+  15% { opacity: 1; transform: translate(-50%, -10px) scale(1.1); }
+  to { transform: translate(-50%, -120px) scale(1); opacity: 0; }
+}
+.reaction-float { animation: reaction-float 3.4s ease-out forwards; }

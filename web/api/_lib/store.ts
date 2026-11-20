@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
-import type { BoardRec, UserRec } from "./types.js";
+import type { BoardRec, UserRec, VersionRec } from "./types.js";
 
 // The database is hidden behind this small interface. Production uses MongoDB (mongo-store.ts);
 // tests use MemoryStore; local development uses FileStore (a JSON file), so no database is needed to try things out.
@@ -15,11 +15,14 @@ export interface Store {
   insertBoard(board: BoardRec): Promise<void>;
   updateBoard(id: string, patch: Partial<Omit<BoardRec, "id" | "ownerId">>): Promise<void>;
   deleteBoard(id: string): Promise<void>;
+  getVersions(boardId: string): Promise<VersionRec[]>; // oldest first
+  setVersions(boardId: string, versions: VersionRec[]): Promise<void>;
 }
 
 export class MemoryStore implements Store {
   protected users: UserRec[] = [];
   protected boards: BoardRec[] = [];
+  protected versions: Record<string, VersionRec[]> = {};
 
   protected changed() {
     /* FileStore overrides this to write to disk */
@@ -57,6 +60,14 @@ export class MemoryStore implements Store {
   }
   async deleteBoard(id: string) {
     this.boards = this.boards.filter((b) => b.id !== id);
+    delete this.versions[id];
+    this.changed();
+  }
+  async getVersions(boardId: string) {
+    return this.versions[boardId] ?? [];
+  }
+  async setVersions(boardId: string, versions: VersionRec[]) {
+    this.versions[boardId] = versions;
     this.changed();
   }
 }
@@ -70,6 +81,7 @@ export class FileStore extends MemoryStore {
         const d = JSON.parse(readFileSync(file, "utf8"));
         this.users = d.users ?? [];
         this.boards = d.boards ?? [];
+        this.versions = d.versions ?? {};
       } catch {
         /* broken file — start empty */
       }
@@ -77,6 +89,6 @@ export class FileStore extends MemoryStore {
   }
   protected changed() {
     mkdirSync(dirname(this.file), { recursive: true });
-    writeFileSync(this.file, JSON.stringify({ users: this.users, boards: this.boards }));
+    writeFileSync(this.file, JSON.stringify({ users: this.users, boards: this.boards, versions: this.versions }));
   }
 }

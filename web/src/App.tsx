@@ -5,6 +5,9 @@ import PropertiesPanel from "./components/PropertiesPanel";
 import BottomBars from "./components/BottomBars";
 import TopBar from "./components/TopBar";
 import EmptyHint from "./components/EmptyHint";
+import CommentLayer from "./components/CommentLayer";
+import { ExtrasBar, ReactionLayer, TimerBar, VoteLayer } from "./components/Extras";
+import Presenter from "./components/Presenter";
 import PeerCursors from "./components/PeerCursors";
 import Dashboard from "./components/Dashboard";
 import AuthScreen from "./components/AuthScreen";
@@ -16,6 +19,7 @@ import { useUI } from "./ui";
 
 function BoardScreen() {
   const spaceDown = useShortcuts();
+  const presenting = useBoard((s) => s.present !== null);
   return (
     <div
       className="relative h-full w-full overflow-hidden"
@@ -27,11 +31,22 @@ function BoardScreen() {
     >
       <Canvas spaceDown={spaceDown} />
       <PeerCursors />
-      <TopBar />
-      <Toolbar />
-      <PropertiesPanel />
-      <BottomBars />
-      <EmptyHint />
+      <ReactionLayer />
+      <TimerBar />
+      {presenting ? (
+        <Presenter />
+      ) : (
+        <>
+          <CommentLayer />
+          <VoteLayer />
+          <ExtrasBar />
+          <TopBar />
+          <Toolbar />
+          <PropertiesPanel />
+          <BottomBars />
+          <EmptyHint />
+        </>
+      )}
     </div>
   );
 }

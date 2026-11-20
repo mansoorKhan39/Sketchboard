@@ -1,6 +1,6 @@
 // Messages between the browser and the room. (The browser has a matching copy in web/src/realtime/protocol.ts.)
 
-export type ObjType = "sticky" | "shape" | "stroke" | "text" | "connector";
+export type ObjType = "sticky" | "shape" | "stroke" | "text" | "image" | "frame" | "comment" | "vote" | "timer" | "reaction" | "settings" | "connector";
 export interface Obj {
   id: string;
   type: ObjType;

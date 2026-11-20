@@ -147,6 +147,16 @@ test("board input is validated", async () => {
   assert.equal((await c.send("PUT", `/boards/${id}`, { objects: tooMany })).status, 400);
 });
 
+test("a board with a picture saves and loads back unchanged", async () => {
+  const c = client();
+  await c.send("POST", "/auth/register", alice);
+  const id = ((await c.send("POST", "/boards", {})).body as any).board.id;
+  const picture = { id: "p1", type: "image", x: 0, y: 0, width: 200, height: 100, rotation: 0, name: "a.png", src: "data:image/webp;base64," + "A".repeat(100_000) };
+  assert.equal((await c.send("PUT", `/boards/${id}`, { objects: [picture, obj("s1")] })).status, 200);
+  const back = (await c.send("GET", `/boards/${id}`)).body as any;
+  assert.deepEqual(back.board.objects[0], picture);
+});
+
 test("forged, edited and expired tokens are rejected", () => {
   const t = createToken("u1", SECRET);
   assert.equal(readToken(t, SECRET), "u1");

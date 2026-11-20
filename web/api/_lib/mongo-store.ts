@@ -1,10 +1,11 @@
 import { MongoClient, type Collection } from "mongodb";
 import type { Store } from "./store.js";
-import type { BoardRec, UserRec } from "./types.js";
+import type { BoardRec, UserRec, VersionRec } from "./types.js";
 
 // MongoDB documents use our own string id as _id.
 type UserDoc = Omit<UserRec, "id"> & { _id: string };
 type BoardDoc = Omit<BoardRec, "id"> & { _id: string };
+type VersionsDoc = { _id: string; versions: VersionRec[] }; // _id = the board id
 
 const toUser = (d: UserDoc): UserRec => {
   const { _id, ...rest } = d;
@@ -21,13 +22,14 @@ let clientPromise: Promise<MongoClient> | undefined;
 export function createMongoStore(uri: string, dbName: string): Store {
   let indexes: Promise<unknown> | undefined;
 
-  async function cols(): Promise<{ users: Collection<UserDoc>; boards: Collection<BoardDoc> }> {
+  async function cols(): Promise<{ users: Collection<UserDoc>; boards: Collection<BoardDoc>; versions: Collection<VersionsDoc> }> {
     try {
       clientPromise ??= new MongoClient(uri, { maxPoolSize: 5, serverSelectionTimeoutMS: 8000 }).connect();
       const client = await clientPromise;
       const db = client.db(dbName);
       const users = db.collection<UserDoc>("users");
       const boards = db.collection<BoardDoc>("boards");
+      const versions = db.collection<VersionsDoc>("versions");
       // creating an index that already exists does nothing, so this is safe on every cold start
       indexes ??= Promise.all([
         users.createIndex({ email: 1 }, { unique: true }),
@@ -35,7 +37,7 @@ export function createMongoStore(uri: string, dbName: string): Store {
         boards.createIndex({ "share.token": 1 }, { sparse: true }),
       ]);
       await indexes;
-      return { users, boards };
+      return { users, boards, versions };
     } catch (e) {
       clientPromise = undefined; // let the next request try to connect again
       indexes = undefined;
@@ -89,8 +91,17 @@ export function createMongoStore(uri: string, dbName: string): Store {
       await boards.updateOne({ _id: id }, { $set: patch });
     },
     async deleteBoard(id) {
-      const { boards } = await cols();
+      const { boards, versions } = await cols();
       await boards.deleteOne({ _id: id });
+      await versions.deleteOne({ _id: id });
+    },
+    async getVersions(boardId) {
+      const { versions } = await cols();
+      return (await versions.findOne({ _id: boardId }))?.versions ?? [];
+    },
+    async setVersions(boardId, list) {
+      const { versions } = await cols();
+      await versions.replaceOne({ _id: boardId }, { versions: list }, { upsert: true });
     },
   };
 }

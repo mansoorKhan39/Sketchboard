@@ -1,3 +1,6 @@
+import { isOverlay } from "../kinds";
+import { voterId } from "../extras";
+import { useAuth } from "../auth";
 import { useEffect, useRef, useState } from "react";
 import { Stage, Layer, Line, Rect, Transformer } from "react-konva";
 import type Konva from "konva";
@@ -10,6 +13,8 @@ import ObjectNode from "./ObjectNode";
 import ConnectorNode from "./ConnectorNode";
 import { centerOf } from "../geometry";
 import TextEditor from "./TextEditor";
+import { placeImages, toWorld } from "../image";
+import { registerStage } from "../exportPng";
 
 export const lastShapeKind: { current: ShapeKind } = { current: "rect" };
 
@@ -54,6 +59,15 @@ export default function Canvas({ spaceDown }: { spaceDown: boolean }) {
     tr.nodes(nodes);
     tr.getLayer()?.batchDraw();
   }, [selectedIds, objects, editingId, canEdit]);
+
+  // Let the Export button find the stage.
+  useEffect(() => {
+    registerStage(stageRef.current, trRef.current);
+    return () => registerStage(null, null);
+  }, []);
+
+  // Pictures keep their shape when resized.
+  const onlyImages = selectedIds.length > 0 && selectedIds.every((id) => objects.find((o) => o.id === id)?.type === "image");
 
   const world = () => stageRef.current!.getRelativePointerPosition()!;
 
@@ -109,7 +123,7 @@ export default function Canvas({ spaceDown }: { spaceDown: boolean }) {
     if (tool === "sticky") {
       const o: BoardObject = {
         id: newId(), type: "sticky", x: x - 90, y: y - 90, width: 180, height: 180, rotation: 0,
-        text: "", color: STICKY_COLORS[0],
+        text: "", color: STICKY_COLORS[0], by: voterId(useAuth.getState().user?.id),
       };
       addObject(o);
       setTool("select");
@@ -121,6 +135,20 @@ export default function Canvas({ spaceDown }: { spaceDown: boolean }) {
       };
       addObject(o);
       setTool("select");
+    } else if (tool === "comment") {
+      const o: BoardObject = { id: newId(), type: "comment", x, y, width: 0, height: 0, rotation: 0, thread: [], resolved: false };
+      addObject(o);
+      setTool("select");
+      useBoard.getState().setCommentId(o.id);
+    } else if (tool === "frame") {
+      const n = objects.reduce((m, o) => (o.type === "frame" ? Math.max(m, o.slide) : m), 0) + 1;
+      const o: BoardObject = {
+        id: newId(), type: "frame", x: x - 320, y: y - 180, width: 640, height: 360, rotation: 0,
+        text: `Frame ${n}`, slide: n,
+      };
+      addObject(o);
+      setTool("select");
+      select([o.id]);
     } else if (tool === "text") {
       const o: BoardObject = {
         id: newId(), type: "text", x, y, width: 200, height: 32, rotation: 0,
@@ -156,8 +184,13 @@ export default function Canvas({ spaceDown }: { spaceDown: boolean }) {
     const left = Math.min(m.x1, m.x2), right = Math.max(m.x1, m.x2);
     const top = Math.min(m.y1, m.y2), bottom = Math.max(m.y1, m.y2);
     if (right - left < 3 && bottom - top < 3) return; // a plain click, not a drag
-    const hit = objects.filter(
-      (o) => o.type !== "connector" && o.x < right && o.x + o.width > left && o.y < bottom && o.y + o.height > top,
+    // a frame is only picked when the box wraps all of it; otherwise it would be grabbed every time you select inside it
+    const hit = objects.filter((o) =>
+      o.type === "connector" || isOverlay(o)
+        ? false
+        : o.type === "frame"
+          ? o.x >= left && o.x + o.width <= right && o.y >= top && o.y + o.height <= bottom
+          : o.x < right && o.x + o.width > left && o.y < bottom && o.y + o.height > top,
     );
     select(hit.map((o) => o.id));
   };
@@ -230,7 +263,18 @@ export default function Canvas({ spaceDown }: { spaceDown: boolean }) {
   const cursor = spaceDown ? "grab" : tool === "select" ? "default" : tool === "pen" ? "crosshair" : "copy";
 
   return (
-    <div style={{ cursor }}>
+    <div
+      style={{ cursor }}
+      onDragOver={(e) => {
+        if (canEdit && e.dataTransfer.types.includes("Files")) e.preventDefault();
+      }}
+      onDrop={(e) => {
+        if (!canEdit || !e.dataTransfer.files.length) return;
+        e.preventDefault();
+        const p = toWorld(e.clientX, e.clientY);
+        void placeImages([...e.dataTransfer.files], p.x, p.y);
+      }}
+    >
       <Stage
         ref={stageRef}
         width={w}
@@ -252,9 +296,10 @@ export default function Canvas({ spaceDown }: { spaceDown: boolean }) {
         onTouchEnd={onStageUp}
       >
         <Layer>
+          {objects.map((o) => (o.type === "frame" ? <ObjectNode key={o.id} obj={o} draggable={tool === "select" && !spaceDown && canEdit} /> : null))}
           {objects.map((o) => (o.type === "connector" ? <ConnectorNode key={o.id} conn={o} /> : null))}
           {objects.map((o) =>
-            o.type === "connector" ? null : <ObjectNode key={o.id} obj={o} draggable={tool === "select" && !spaceDown && canEdit} />,
+            o.type === "connector" || o.type === "frame" || isOverlay(o) ? null : <ObjectNode key={o.id} obj={o} draggable={tool === "select" && !spaceDown && canEdit} />,
           )}
           {marquee && (
             <Rect
@@ -277,7 +322,7 @@ export default function Canvas({ spaceDown }: { spaceDown: boolean }) {
           <Transformer
             ref={trRef}
             rotateEnabled
-            keepRatio={false}
+            keepRatio={onlyImages}
             borderStroke="#4F46E5"
             borderStrokeWidth={1.5}
             anchorStroke="#4F46E5"

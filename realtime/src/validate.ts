@@ -3,7 +3,9 @@ import type { Obj, ObjType, Op } from "./protocol";
 export const MAX_OBJECTS = 5000;
 export const MAX_OPS_PER_EDIT = 200;
 const MAX_OBJECT_BYTES = 64_000;
-const TYPES: ObjType[] = ["sticky", "shape", "stroke", "text", "connector"];
+export const MAX_IMAGE_BYTES = 200_000; // pictures are compressed in the browser to stay under this
+const limitFor = (type: unknown) => (type === "image" ? MAX_IMAGE_BYTES : MAX_OBJECT_BYTES);
+const TYPES: ObjType[] = ["sticky", "shape", "stroke", "text", "image", "frame", "comment", "vote", "timer", "reaction", "settings", "connector"];
 const NUM = ["x", "y", "width", "height", "rotation"] as const;
 
 const isNum = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
@@ -16,7 +18,7 @@ export function isObj(o: unknown): o is Obj {
     typeof r.id === "string" && r.id.length > 0 && r.id.length <= 64 &&
     TYPES.includes(r.type as ObjType) &&
     NUM.every((k) => isNum(r[k])) &&
-    size(o) <= MAX_OBJECT_BYTES
+    size(o) <= limitFor(r.type)
   );
 }
 

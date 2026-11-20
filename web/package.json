@@ -8,7 +8,7 @@
     "build": "tsc --noEmit && tsc --noEmit -p api && vite build",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit && tsc --noEmit -p api",
-    "test": "tsx --test api/_tests/*.test.ts src/realtime/*.test.ts"
+    "test": "tsx --test api/_tests/*.test.ts src/realtime/*.test.ts src/*.test.ts"
   },
   "dependencies": {
     "konva": "^10.9.1",

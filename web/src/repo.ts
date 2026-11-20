@@ -1,5 +1,6 @@
 import type { BoardObject, Viewport } from "./types";
-import { api } from "./api";
+import { api, type VersionInfo } from "./api";
+export type { VersionInfo };
 import { useAuth } from "./auth";
 import * as local from "./persist";
 
@@ -29,6 +30,10 @@ export interface Repo {
   remove(id: string): Promise<void>;
   duplicate(id: string): Promise<BoardSummary | null>;
   save(id: string, objects: BoardObject[], viewport: Viewport): Promise<void>;
+  // version history (the newest 5 saved copies of a board)
+  listVersions(id: string): Promise<VersionInfo[]>; // newest first
+  saveVersion(id: string, objects: BoardObject[], label: string): Promise<VersionInfo[]>;
+  getVersion(id: string, versionId: string): Promise<BoardObject[] | null>;
 }
 
 export const localRepo: Repo = {
@@ -58,6 +63,15 @@ export const localRepo: Repo = {
   },
   async save(id, objects, viewport) {
     local.saveBoardData(id, objects, viewport);
+  },
+  async listVersions(id) {
+    return local.listVersions(id);
+  },
+  async saveVersion(id, objects, label) {
+    return local.saveVersion(id, objects, label);
+  },
+  async getVersion(id, versionId) {
+    return local.getVersion(id, versionId);
   },
 };
 
@@ -93,6 +107,15 @@ export const cloudRepo: Repo = {
   },
   async save(id, objects, viewport) {
     await api.saveBoard(id, objects, viewport);
+  },
+  async listVersions(id) {
+    return (await api.listVersions(id)).versions;
+  },
+  async saveVersion(id, objects, label) {
+    return (await api.saveVersion(id, objects, label)).versions;
+  },
+  async getVersion(id, versionId) {
+    return (await api.getVersion(id, versionId)).objects;
   },
 };
 

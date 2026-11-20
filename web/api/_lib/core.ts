@@ -2,6 +2,7 @@ import { nanoid } from "nanoid";
 import { z } from "zod";
 import type { Store } from "./store.js";
 import type { ApiRequest, ApiResponse, BoardRec, UserRec, Viewport } from "./types.js";
+import { addVersion } from "./versions.js";
 import { SESSION_DAYS, createJoinToken, createToken, hashPassword, readToken, safeEqual, verifyPassword } from "./security.js";
 
 export const COOKIE = "sb_session";
@@ -26,7 +27,7 @@ const LoginBody = z.object({ email: Email, password: z.string("Enter your passwo
 
 const BoardObject = z.looseObject({
   id: z.string().min(1).max(64),
-  type: z.enum(["sticky", "shape", "stroke", "text", "connector"]),
+  type: z.enum(["sticky", "shape", "stroke", "text", "image", "frame", "comment", "vote", "timer", "reaction", "settings", "connector"]),
   x: z.number(),
   y: z.number(),
   width: z.number(),
@@ -37,6 +38,7 @@ const ViewportSchema = z.object({ x: z.number(), y: z.number(), scale: z.number(
 const Name = z.string().trim().min(1).max(100);
 const CreateBody = z.object({ name: Name.optional(), objects: z.array(BoardObject).max(5000).optional() });
 const SaveBody = z.object({ objects: z.array(BoardObject).max(5000), viewport: ViewportSchema.optional() });
+const VersionBody = z.object({ label: z.string().trim().max(60).optional(), objects: z.array(BoardObject).max(5000) });
 const RenameBody = z.object({ name: Name });
 const ShareBody = z.object({ enabled: z.boolean(), right: z.enum(["viewer", "editor"]).optional(), regenerate: z.boolean().optional() });
 const JoinBody = z.object({ name: z.string().trim().max(40).optional() });
@@ -234,6 +236,24 @@ export function createApi(store: Store, config: ApiConfig) {
           };
           await store.updateBoard(id, { share });
           return json(200, { share });
+        }
+      }
+      if (id && seg[2] === "versions") {
+        await ownedBoard(id, user);
+        const list = await store.getVersions(id);
+        const summaries = (l: typeof list) => l.map((v) => ({ id: v.id, at: v.at, label: v.label, count: v.objects.length })).reverse(); // newest first
+        if (!seg[3] && method === "GET") return json(200, { versions: summaries(list) });
+        if (!seg[3] && method === "POST") {
+          const body = parse(VersionBody, req.body);
+          checkSize(body.objects);
+          const next = addVersion(list, { id: nanoid(10), at: Date.now(), label: body.label || "Saved version", objects: body.objects });
+          await store.setVersions(id, next);
+          return json(201, { versions: summaries(next) });
+        }
+        if (seg[3] && method === "GET") {
+          const v = list.find((x) => x.id === seg[3]);
+          if (!v) throw fail(404, "not_found", "That version does not exist any more.");
+          return json(200, { objects: v.objects });
         }
       }
       if (id && seg[2] === "duplicate" && method === "POST") {

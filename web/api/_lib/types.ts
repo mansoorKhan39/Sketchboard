@@ -31,6 +31,14 @@ export interface BoardRec {
   updatedAt: number;
 }
 
+// A saved copy of a board's objects ("version history"). Kept apart from the board so loading a board stays light.
+export interface VersionRec {
+  id: string;
+  at: number;
+  label: string;
+  objects: unknown[];
+}
+
 // A request/response pair that does not depend on any web framework,
 // so the same code runs on Vercel, in the dev server, and in tests.
 export interface ApiRequest {

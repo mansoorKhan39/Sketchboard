@@ -1,3 +1,4 @@
+import { isOverlay } from "../kinds";
 import { useBoard } from "../store";
 
 const HINTS = [
@@ -9,7 +10,7 @@ const HINTS = [
 
 // Shown only while the board is empty. It disappears as soon as anything is added.
 export default function EmptyHint() {
-  const empty = useBoard((s) => s.objects.length === 0 && s.loaded && s.role !== "viewer");
+  const empty = useBoard((s) => !s.objects.some((o) => !isOverlay(o)) && s.loaded && s.role !== "viewer");
   if (!empty) return null;
   return (
     <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center">

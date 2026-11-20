@@ -93,8 +93,39 @@ export function deleteBoard(id: string) {
   saveIndex(listBoards().filter((b) => b.id !== id));
   try {
     localStorage.removeItem(dataKey(id));
+    localStorage.removeItem(versionsKey(id));
   } catch {
     /* ignore */
+  }
+}
+
+// ---- version history (guest boards) ----
+const MAX_VERSIONS = 5;
+const versionsKey = (id: string) => `sketchboard.versions.v1.${id}`;
+interface StoredVersion {
+  id: string;
+  at: number;
+  label: string;
+  objects: BoardObject[];
+}
+const info = (list: StoredVersion[]) => list.map((v) => ({ id: v.id, at: v.at, label: v.label, count: v.objects.length })).reverse();
+
+export const listVersions = (id: string) => info(read<StoredVersion[]>(versionsKey(id)) ?? []);
+export const getVersion = (id: string, versionId: string) =>
+  (read<StoredVersion[]>(versionsKey(id)) ?? []).find((v) => v.id === versionId)?.objects ?? null;
+
+export function saveVersion(id: string, objects: BoardObject[], label: string) {
+  let list = [...(read<StoredVersion[]>(versionsKey(id)) ?? []), { id: nanoid(10), at: Date.now(), label, objects }];
+  // browsers give about 5 MB to a site, so drop old versions until the new list fits
+  for (;;) {
+    while (list.length > MAX_VERSIONS) list.shift();
+    try {
+      localStorage.setItem(versionsKey(id), JSON.stringify(list));
+      return info(list);
+    } catch {
+      if (list.length <= 1) throw new Error("This browser has no space left to keep a version of this board.");
+      list = list.slice(1);
+    }
   }
 }
 
