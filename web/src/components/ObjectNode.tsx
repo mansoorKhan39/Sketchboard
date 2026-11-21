@@ -8,7 +8,7 @@ import { useBoard } from "../store";
 import { useUI } from "../ui";
 import { useAuth } from "../auth";
 import { isHiddenFrom, isPrivate, voterId } from "../extras";
-import { inkFor } from "../constants";
+import { inkFor, mixHex } from "../constants";
 
 interface Props {
   obj: Placeable;
@@ -121,15 +121,42 @@ export default function ObjectNode({ obj, draggable }: Props) {
     >
       {obj.type === "sticky" && (
         <>
+          {/* paper: a wide soft shadow, a tight contact shadow, a top-to-bottom tint and a curled corner */}
           <Rect
             width={obj.width}
             height={obj.height}
             fill={obj.color}
-            cornerRadius={4}
-            shadowColor="black"
-            shadowBlur={14}
-            shadowOpacity={0.2}
-            shadowOffsetY={6}
+            cornerRadius={3}
+            shadowColor="#0B1020"
+            shadowBlur={22}
+            shadowOpacity={0.22}
+            shadowOffsetY={12}
+            listening={false}
+          />
+          <Rect
+            width={obj.width}
+            height={obj.height}
+            fill={obj.color}
+            cornerRadius={3}
+            shadowColor="#0B1020"
+            shadowBlur={3}
+            shadowOpacity={0.28}
+            shadowOffsetY={1}
+          />
+          <Rect
+            width={obj.width}
+            height={obj.height}
+            cornerRadius={3}
+            fillLinearGradientStartPoint={{ x: 0, y: 0 }}
+            fillLinearGradientEndPoint={{ x: 0, y: obj.height }}
+            fillLinearGradientColorStops={[0, mixHex(obj.color, "#FFFFFF", 0.28), 0.14, obj.color, 1, mixHex(obj.color, "#000000", 0.07)]}
+            listening={false}
+          />
+          <Line
+            points={[obj.width - 22, obj.height, obj.width, obj.height - 22, obj.width, obj.height]}
+            closed
+            fill={mixHex(obj.color, "#000000", 0.16)}
+            listening={false}
           />
           {!hidden && (
             <Text
@@ -157,6 +184,10 @@ export default function ObjectNode({ obj, draggable }: Props) {
               stroke={obj.stroke}
               strokeWidth={obj.strokeWidth}
               cornerRadius={6}
+              shadowColor="#0B1020"
+              shadowBlur={10}
+              shadowOpacity={0.1}
+              shadowOffsetY={3}
             />
           )}
           {obj.kind === "ellipse" && (

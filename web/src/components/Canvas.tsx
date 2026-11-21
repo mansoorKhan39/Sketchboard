@@ -329,7 +329,9 @@ export default function Canvas({ spaceDown }: { spaceDown: boolean }) {
             anchorStrokeWidth={1.5}
             anchorFill="#FFFFFF"
             anchorCornerRadius={3}
-            anchorSize={10}
+            anchorSize={9}
+            rotateAnchorOffset={28}
+            padding={3}
             onTransformEnd={onTransformEnd}
             boundBoxFunc={(oldBox, newBox) => (newBox.width < 20 || newBox.height < 20 ? oldBox : newBox)}
           />

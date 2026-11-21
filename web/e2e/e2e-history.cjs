@@ -43,7 +43,7 @@ const { chromium } = require('playwright');
   // 1) guest (versions live in this browser)
   const g = await (await b.newContext({ viewport: { width: 1280, height: 800 } })).newPage();
   g.on('pageerror', e => errs.push(String(e)));
-  await g.goto('http://localhost:5173/'); await g.waitForTimeout(900);
+  await g.goto('http://localhost:5173/#/'); await g.waitForTimeout(900);
   await g.getByTestId('new-board').click(); await g.waitForTimeout(700);
   await flow(g, 'guest');
 
@@ -53,7 +53,7 @@ const { chromium } = require('playwright');
   await c.goto('http://localhost:5173/#/login'); await c.waitForTimeout(800);
   const email = 'hist' + Date.now() + '@example.com';
   await c.evaluate(async (email) => { await fetch('/api/v1/auth/register', { method: 'POST', headers: { 'X-Sketchboard': '1', 'Content-Type': 'application/json' }, body: JSON.stringify({ name: 'Hist', email, password: 'history pass 1' }) }); }, email);
-  await c.goto('http://localhost:5173/'); await c.waitForTimeout(1200);
+  await c.goto('http://localhost:5173/#/'); await c.waitForTimeout(1200);
   await c.getByTestId('new-board').click(); await c.waitForTimeout(900);
   await flow(c, 'cloud');
   ok('no page errors ' + JSON.stringify(errs), errs.length === 0);

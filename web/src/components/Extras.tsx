@@ -108,7 +108,7 @@ export function ExtrasBar() {
     useBoard.getState().liveEdit((objs) => (objs.some((o) => o.type === "timer") ? objs.filter((o) => o.type !== "timer") : [...objs, newTimer()]));
 
   return (
-    <div className="absolute bottom-4 left-1/2 z-20 flex -translate-x-1/2 items-center gap-0.5 rounded-xl border border-line bg-surface p-1 shadow-float">
+    <div className="glass absolute bottom-[4.5rem] left-1/2 z-20 flex -translate-x-1/2 items-center gap-0.5 whitespace-nowrap rounded-xl p-1 min-[1180px]:bottom-4">
       {REACTIONS.map((e) => (
         <button key={e} data-testid="react" aria-label={`React ${e}`} onClick={() => react(e)} className="flex h-8 w-8 items-center justify-center rounded-lg text-lg transition hover:scale-125 hover:bg-sunken">
           {e}
@@ -178,7 +178,7 @@ export function TimerBar() {
   return (
     <div
       data-testid="timer"
-      className={`absolute bottom-[4.5rem] left-1/2 z-20 flex -translate-x-1/2 items-center gap-2 rounded-xl border bg-surface px-3 py-1.5 shadow-float ${finished ? "border-red-500" : "border-line"}`}
+      className={`glass absolute bottom-[8rem] left-1/2 z-20 flex -translate-x-1/2 items-center gap-2 rounded-xl px-3 py-1.5 min-[1180px]:bottom-[4.5rem] ${finished ? "!border-red-500" : ""}`}
     >
       <span data-testid="timer-time" className={`min-w-14 text-center font-mono text-xl font-semibold tabular-nums ${finished ? "text-red-500" : ""}`}>
         {finished ? "Time's up" : formatTime(left)}

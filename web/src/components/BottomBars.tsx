@@ -12,7 +12,7 @@ export default function BottomBars() {
   const cx = window.innerWidth / 2;
   const cy = window.innerHeight / 2;
   const btn = "flex h-8 w-8 items-center justify-center rounded-lg text-muted transition hover:bg-sunken hover:text-ink disabled:opacity-30 disabled:hover:bg-transparent";
-  const bar = "absolute bottom-4 z-20 flex items-center gap-0.5 rounded-xl border border-line bg-surface p-1 shadow-float";
+  const bar = "glass absolute bottom-4 z-20 flex items-center gap-0.5 rounded-xl p-1";
   const ic = (d: string) => (
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d={d} /></svg>
   );
@@ -35,8 +35,8 @@ export default function BottomBars() {
         </button>
         <button className={btn} onClick={() => zoomBy(1.2, cx, cy)} aria-label="Zoom in">{ic("M12 5v14M5 12h14")}</button>
         <div className="mx-1 h-5 w-px bg-line" />
-        <button className="h-8 rounded-lg px-2.5 text-xs font-medium text-muted hover:bg-sunken hover:text-ink" onClick={() => fit(window.innerWidth, window.innerHeight)} title="Fit all (Shift+1)">
-          Fit
+        <button className={btn} onClick={() => fit(window.innerWidth, window.innerHeight)} title="Fit to screen (Shift+1)" aria-label="Fit to screen" data-testid="fit">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 9V5a1 1 0 011-1h4M15 4h4a1 1 0 011 1v4M20 15v4a1 1 0 01-1 1h-4M9 20H5a1 1 0 01-1-1v-4" /></svg>
         </button>
       </div>
     </>

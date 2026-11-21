@@ -13,7 +13,7 @@ const BASE = 'http://localhost:5173';
 
   // ---------- A: owner
   const A = await mk(); const a = A.p;
-  await a.goto(BASE); await a.waitForTimeout(800);
+  await a.goto(BASE + '/#/'); await a.waitForTimeout(800);
   await a.getByTestId('sign-in').click(); await a.getByTestId('auth-switch').click();
   await a.getByTestId('auth-name').fill('Alice'); await a.getByTestId('auth-email').fill('alice@example.com'); await a.getByTestId('auth-password').fill('alice password 1');
   await a.getByTestId('auth-submit').click(); await a.waitForTimeout(800);

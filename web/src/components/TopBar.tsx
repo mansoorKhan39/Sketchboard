@@ -32,7 +32,7 @@ export default function TopBar() {
     return () => window.removeEventListener("mousedown", close);
   }, [share]);
 
-  const card = "pointer-events-auto flex items-center gap-1 rounded-xl border border-line bg-surface p-1.5 shadow-float";
+  const card = "glass pointer-events-auto flex items-center gap-1 rounded-xl p-1.5";
 
   return (
     <div className="pointer-events-none absolute inset-x-4 top-4 z-30 flex items-start justify-between">
@@ -126,7 +126,7 @@ export default function TopBar() {
             }}
             data-testid="history"
             title="Save and restore earlier versions of this board"
-            className="h-9 rounded-lg border border-line px-3 text-sm font-medium hover:border-brand hover:bg-brand-soft"
+            className="h-9 whitespace-nowrap rounded-lg border border-line px-3 text-sm font-medium hover:border-brand hover:bg-brand-soft"
           >
             History
           </button>
@@ -136,7 +136,7 @@ export default function TopBar() {
             onClick={() => useBoard.getState().startPresent()}
             data-testid="present"
             title="Show the frames one by one"
-            className="h-9 rounded-lg border border-line px-3 text-sm font-medium hover:border-brand hover:bg-brand-soft"
+            className="h-9 whitespace-nowrap rounded-lg border border-line px-3 text-sm font-medium hover:border-brand hover:bg-brand-soft"
           >
             Present
           </button>
@@ -151,7 +151,7 @@ export default function TopBar() {
           }}
           data-testid="export-png"
           title="Save the board as a PNG picture"
-          className="h-9 rounded-lg border border-line px-3 text-sm font-medium hover:border-brand hover:bg-brand-soft"
+          className="h-9 whitespace-nowrap rounded-lg border border-line px-3 text-sm font-medium hover:border-brand hover:bg-brand-soft"
         >
           Export PNG
         </button>

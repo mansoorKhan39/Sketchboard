@@ -1,7 +1,7 @@
 import { create } from "zustand";
 
 export type Theme = "light" | "dark";
-export type View = { name: "dashboard" } | { name: "board"; id: string } | { name: "auth" } | { name: "shared"; token: string };
+export type View = { name: "landing" } | { name: "dashboard" } | { name: "board"; id: string } | { name: "auth" } | { name: "shared"; token: string };
 
 const THEME_KEY = "sketchboard.theme";
 
@@ -22,12 +22,16 @@ export function viewFromHash(): View {
   if (m) return { name: "board", id: m[1] };
   const sh = window.location.hash.match(/^#\/s\/([\w-]+)/);
   if (sh) return { name: "shared", token: sh[1] };
-  return window.location.hash.startsWith("#/login") ? { name: "auth" } : { name: "dashboard" };
+  if (window.location.hash.startsWith("#/login")) return { name: "auth" };
+  // an address with no hash at all is the front door; "#/" is the dashboard
+  return window.location.hash === "" || window.location.hash === "#" ? { name: "landing" } : { name: "dashboard" };
 }
 
 interface UIState {
   theme: Theme;
   view: View;
+  toast: { id: number; text: string } | null;
+  showToast: (text: string) => void;
   toggleTheme: () => void;
   go: (v: View) => void;
 }
@@ -35,8 +39,19 @@ interface UIState {
 export const useUI = create<UIState>((set, get) => ({
   theme: initialTheme(),
   view: viewFromHash(),
+  toast: null,
+  // a short message at the bottom of the screen ("Link copied")
+  showToast: (text) => {
+    const id = Date.now();
+    set({ toast: { id, text } });
+    setTimeout(() => get().toast?.id === id && set({ toast: null }), 2200);
+  },
   toggleTheme: () => {
     const theme: Theme = get().theme === "dark" ? "light" : "dark";
+    // fade the colours for a moment instead of snapping
+    const root = document.documentElement;
+    root.classList.add("theme-anim");
+    setTimeout(() => root.classList.remove("theme-anim"), 320);
     try {
       localStorage.setItem(THEME_KEY, theme);
     } catch {
@@ -45,7 +60,7 @@ export const useUI = create<UIState>((set, get) => ({
     set({ theme });
   },
   go: (v) => {
-    window.location.hash = v.name === "board" ? `#/board/${v.id}` : v.name === "auth" ? "#/login" : "#/";
+    window.location.hash = v.name === "board" ? `#/board/${v.id}` : v.name === "auth" ? "#/login" : v.name === "landing" ? "" : "#/";
   },
 }));
 

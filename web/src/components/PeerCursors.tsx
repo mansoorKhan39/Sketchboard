@@ -23,14 +23,14 @@ export default function PeerCursors() {
           <div
             key={p.id}
             data-testid="peer-cursor"
-            className="absolute left-0 top-0 transition-transform duration-100 ease-linear"
+            className="absolute left-0 top-0 will-change-transform transition-transform duration-[80ms] ease-linear"
             style={{ transform: `translate(${c.x * viewport.scale + viewport.x}px, ${c.y * viewport.scale + viewport.y}px)` }}
           >
-            <svg width="18" height="18" viewBox="0 0 24 24" fill={p.color} stroke="white" strokeWidth="1.5" strokeLinejoin="round">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill={p.color} stroke="white" strokeWidth="1.5" strokeLinejoin="round" style={{ filter: "drop-shadow(0 2px 3px rgb(0 0 0 / 0.35))" }}>
               <path d="M5 3l14 8-6 2-2 6z" />
             </svg>
             <span
-              className="ml-3 -mt-1 inline-block whitespace-nowrap rounded-md px-1.5 py-0.5 text-[11px] font-medium text-white"
+              className="ml-4 -mt-1 inline-block whitespace-nowrap rounded-full px-2 py-0.5 text-[11px] font-medium text-white shadow-[0_2px_6px_rgb(0_0_0/0.3)]"
               style={{ background: p.color }}
             >
               {p.name}

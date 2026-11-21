@@ -29,7 +29,7 @@ export default function Toolbar() {
   const picker = useRef<HTMLInputElement>(null);
 
   return (
-    <div className="absolute left-4 top-1/2 z-20 flex -translate-y-1/2 flex-col gap-1 rounded-2xl border border-line bg-surface p-1.5 shadow-float">
+    <div className="glass absolute left-4 top-1/2 z-20 flex -translate-y-1/2 flex-col gap-1 rounded-xl p-1.5">
       {tools.map((t) => (
         <div key={t.id} className="group relative">
           <button
@@ -37,13 +37,15 @@ export default function Toolbar() {
             aria-pressed={tool === t.id}
             data-testid={`tool-${t.id}`}
             onClick={() => setTool(t.id)}
-            className={`flex h-10 w-10 items-center justify-center rounded-xl transition ${
-              tool === t.id ? "bg-brand text-white shadow-sm" : "text-muted hover:bg-sunken hover:text-ink"
+            className={`flex h-10 w-10 items-center justify-center rounded-[10px] ${
+              tool === t.id
+                ? "bg-brand text-white shadow-[0_0_0_1px_rgb(99_102_241/0.6),0_6px_16px_-4px_rgb(79_70_229/0.65)]"
+                : "text-muted hover:bg-sunken hover:text-ink"
             }`}
           >
             {t.icon}
           </button>
-          <span className="pointer-events-none absolute left-full top-1/2 ml-3 flex -translate-y-1/2 items-center gap-2 whitespace-nowrap rounded-lg bg-ink px-2.5 py-1 text-xs font-medium text-canvas opacity-0 transition group-hover:opacity-100">
+          <span className="pointer-events-none absolute left-full top-1/2 z-40 ml-3 flex -translate-x-1 -translate-y-1/2 items-center gap-2 whitespace-nowrap rounded-lg bg-ink px-2.5 py-1.5 text-xs font-medium text-canvas opacity-0 shadow-float transition duration-150 group-hover:translate-x-0 group-hover:opacity-100 group-focus-within:translate-x-0 group-focus-within:opacity-100">
             {t.label}
             <kbd className="rounded bg-canvas/20 px-1.5 py-0.5 font-sans text-[10px]">{t.key}</kbd>
           </span>
@@ -55,11 +57,11 @@ export default function Toolbar() {
             aria-label="Image"
             data-testid="tool-image"
             onClick={() => picker.current?.click()}
-            className="flex h-10 w-10 items-center justify-center rounded-xl text-muted transition hover:bg-sunken hover:text-ink"
+            className="flex h-10 w-10 items-center justify-center rounded-[10px] text-muted hover:bg-sunken hover:text-ink"
           >
             {icon(<><rect x="3" y="4" width="18" height="16" rx="2" /><circle cx="9" cy="10" r="1.6" /><path d="M21 16l-5-5-8 9" /></>)}
           </button>
-          <span className="pointer-events-none absolute left-full top-1/2 ml-3 flex -translate-y-1/2 items-center gap-2 whitespace-nowrap rounded-lg bg-ink px-2.5 py-1 text-xs font-medium text-canvas opacity-0 transition group-hover:opacity-100">
+          <span className="pointer-events-none absolute left-full top-1/2 z-40 ml-3 flex -translate-x-1 -translate-y-1/2 items-center gap-2 whitespace-nowrap rounded-lg bg-ink px-2.5 py-1.5 text-xs font-medium text-canvas opacity-0 shadow-float transition duration-150 group-hover:translate-x-0 group-hover:opacity-100 group-focus-within:translate-x-0 group-focus-within:opacity-100">
             Image
           </span>
           <input

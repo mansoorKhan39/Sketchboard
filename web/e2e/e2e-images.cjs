@@ -5,7 +5,7 @@ const fs = require('fs');
   const ok = (n, c) => R.push((c ? 'PASS ' : 'FAIL ') + n);
   const ctx = await b.newContext({ viewport: { width: 1280, height: 800 }, acceptDownloads: true });
   const p = await ctx.newPage(); const errs = []; p.on('pageerror', e => errs.push(String(e)));
-  await p.goto('http://localhost:5173/'); await p.waitForTimeout(900);
+  await p.goto('http://localhost:5173/#/'); await p.waitForTimeout(900);
   await p.getByTestId('new-board').click(); await p.waitForTimeout(700);
 
   // export on an empty board gives a clear message

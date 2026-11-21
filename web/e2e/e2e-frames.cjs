@@ -5,7 +5,7 @@ const { chromium } = require('playwright');
   const p = await (await b.newContext({ viewport: { width: 1280, height: 800 } })).newPage();
   const errs = []; p.on('pageerror', e => errs.push(String(e)));
   const st = () => p.evaluate(() => { const s = window.__board.getState(); return { objects: s.objects, vp: s.viewport, present: s.present, sel: s.selectedIds }; });
-  await p.goto('http://localhost:5173/'); await p.waitForTimeout(900);
+  await p.goto('http://localhost:5173/#/'); await p.waitForTimeout(900);
   await p.getByTestId('new-board').click(); await p.waitForTimeout(700);
   ok('no Present button on a board without frames', (await p.getByTestId('present').count()) === 0);
 
@@ -22,7 +22,7 @@ const { chromium } = require('playwright');
   ok('sticky created inside frame', !!sticky);
 
   // click inside the empty part of the frame does NOT grab the frame
-  await p.mouse.click(300, 250); await p.waitForTimeout(150); s = await st();
+  await p.mouse.click(300, 450); await p.waitForTimeout(150); s = await st();
   ok('clicking empty space inside a frame selects nothing', s.sel.length === 0);
 
   // drag the frame by its title: the sticky must travel with it

@@ -5,6 +5,14 @@ import { useBoard } from "../store";
 import { INK_COLORS, SHAPE_FILLS, STICKY_COLORS } from "../constants";
 import { lastShapeKind } from "./Canvas";
 import type { BoardObject, ShapeKind } from "../types";
+import { contentBounds } from "../geometry";
+
+const SIZES = [
+  { label: "S", px: 16 },
+  { label: "M", px: 24 },
+  { label: "L", px: 36 },
+  { label: "XL", px: 52 },
+];
 
 function Swatches({ colors, value, onPick }: { colors: string[]; value?: string; onPick: (c: string) => void }) {
   return (
@@ -45,7 +53,7 @@ function Segment<T extends string>({ options, value, onPick }: { options: T[]; v
 
 const divider = <div className="h-6 w-px bg-line" />;
 
-// Floating bar under the top bar, shown when something is selected.
+// Floating bar that sits just above the selection (or just below it when there is no room above).
 export default function PropertiesPanel() {
   // Select the raw state, then filter. (Filtering inside the selector returns a new array every time,
   // which makes zustand v5 re-render forever.)
@@ -57,7 +65,24 @@ export default function PropertiesPanel() {
   const duplicateSelected = useBoard((s) => s.duplicateSelected);
 
   const canEdit = useBoard((s) => s.role !== "viewer");
+  const viewport = useBoard((s) => s.viewport);
   if (!selected.length || !canEdit) return null;
+
+  // Where to float: centred over the selection's box, kept inside the window and clear of the top bar.
+  const box = contentBounds(selected, 0);
+  const W = window.innerWidth;
+  let left = W / 2;
+  let top = 84;
+  let flip = false;
+  if (box) {
+    left = Math.min(W - 24, Math.max(24, (box.x + box.width / 2) * viewport.scale + viewport.x));
+    const above = box.y * viewport.scale + viewport.y - 44; // leaves room for the rotate handle
+    const below = (box.y + box.height) * viewport.scale + viewport.y + 14;
+    if (above < 150) {
+      flip = true;
+      top = Math.min(window.innerHeight - 90, below);
+    } else top = above;
+  }
 
   const patchAll = (make: (o: BoardObject) => Partial<BoardObject> | null) => {
     const patches: Record<string, Partial<BoardObject>> = {};
@@ -73,8 +98,12 @@ export default function PropertiesPanel() {
   const canDuplicate = selected.some((o) => o.type !== "connector");
 
   return (
-    <div className="absolute left-1/2 top-4 z-20 flex -translate-x-1/2 items-center gap-3 rounded-xl border border-line bg-surface px-3 py-2 shadow-float">
-      <span className="text-xs font-medium text-muted">{selected.length > 1 ? `${selected.length} selected` : first.type}</span>
+    <div className="pointer-events-none absolute z-20" style={{ left, top, transform: `translate(-50%, ${flip ? "0" : "-100%"})` }}>
+    <div
+      data-testid="context-bar"
+      className="glass pop-in-center pointer-events-auto flex max-w-[calc(100vw-2rem)] items-center gap-3 overflow-x-auto whitespace-nowrap rounded-xl px-3 py-2"
+    >
+      <span className="whitespace-nowrap text-xs font-medium capitalize text-muted">{selected.length > 1 ? `${selected.length} selected` : first.type}</span>
       {divider}
       {allType && first.type === "sticky" && (
         <Swatches colors={STICKY_COLORS} value={first.color} onPick={(c) => patchAll((o) => (o.type === "sticky" ? { color: c } : null))} />
@@ -96,7 +125,22 @@ export default function PropertiesPanel() {
         <Swatches colors={INK_COLORS} value={first.color} onPick={(c) => patchAll((o) => (o.type === "stroke" ? { color: c } : null))} />
       )}
       {allType && first.type === "text" && (
-        <Swatches colors={INK_COLORS} value={first.color} onPick={(c) => patchAll((o) => (o.type === "text" ? { color: c } : null))} />
+        <>
+          <div className="flex rounded-lg bg-sunken p-0.5" role="group" aria-label="Font size">
+            {SIZES.map((z) => (
+              <button
+                key={z.label}
+                data-testid={`size-${z.label}`}
+                aria-pressed={first.fontSize === z.px}
+                onClick={() => patchAll((o) => (o.type === "text" ? { fontSize: z.px, height: Math.round(z.px * 1.3) } : null))}
+                className={`rounded-md px-2 py-1 text-xs font-medium ${first.fontSize === z.px ? "bg-surface text-ink shadow-sm" : "text-muted hover:text-ink"}`}
+              >
+                {z.label}
+              </button>
+            ))}
+          </div>
+          <Swatches colors={INK_COLORS} value={first.color} onPick={(c) => patchAll((o) => (o.type === "text" ? { color: c } : null))} />
+        </>
       )}
       {selected.length === 1 && first.type === "frame" && (
         <>
@@ -180,6 +224,7 @@ export default function PropertiesPanel() {
           Delete
         </button>
       </div>
+    </div>
     </div>
   );
 }

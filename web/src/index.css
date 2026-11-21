@@ -5,24 +5,35 @@
 
 /* Design tokens. Everything in the UI reads these, so light and dark stay in sync. */
 :root {
-  --canvas: #f3f5f9;
-  --surface: #ffffff;
-  --sunken: #eceff5;
-  --line: #e1e5ee;
-  --ink: #14182b;
-  --muted: #6b7389;
-  --dot: #ccd2e0;
-  --shadow: 0 1px 2px rgb(20 24 43 / 0.06), 0 8px 24px -6px rgb(20 24 43 / 0.12);
+  --canvas: #ffffff;
+  --surface: #f9fafb;
+  --sunken: #f1f3f6;
+  --line: #e5e7eb;
+  --ink: #111827;
+  --muted: #6b7280;
+  --dot: #cfd4dc;
+  --edge: rgb(255 255 255 / 0.9); /* 1px highlight on top of floating panels */
+  --shadow:
+    0 0 0 1px rgb(17 24 39 / 0.03),
+    0 1px 2px rgb(17 24 39 / 0.05),
+    0 4px 8px -2px rgb(17 24 39 / 0.06),
+    0 16px 32px -8px rgb(17 24 39 / 0.12);
+  --ease: cubic-bezier(0.16, 1, 0.3, 1);
 }
 .dark {
-  --canvas: #0e111f;
-  --surface: #171b2e;
-  --sunken: #1f2440;
-  --line: #2b3152;
-  --ink: #eef0f8;
-  --muted: #98a0bb;
-  --dot: #262c4a;
-  --shadow: 0 1px 2px rgb(0 0 0 / 0.4), 0 10px 28px -6px rgb(0 0 0 / 0.55);
+  --canvas: #0f111a;
+  --surface: #161926;
+  --sunken: #1e2233;
+  --line: #252a3d;
+  --ink: #f8fafc;
+  --muted: #94a3b8;
+  --dot: #2a3047;
+  --edge: rgb(255 255 255 / 0.06);
+  --shadow:
+    0 0 0 1px rgb(0 0 0 / 0.25),
+    0 1px 2px rgb(0 0 0 / 0.35),
+    0 6px 12px -2px rgb(0 0 0 / 0.4),
+    0 20px 40px -8px rgb(0 0 0 / 0.55);
 }
 
 @theme inline {
@@ -53,8 +64,45 @@ body {
 
 :focus-visible { outline: 2px solid #4f46e5; outline-offset: 2px; }
 
+/* Every button and field eases the same way (150 ms). Utility classes can still override it. */
+@layer base {
+  button, input, select, textarea, a, [role="switch"] {
+    transition-property: background-color, color, border-color, box-shadow, transform, opacity;
+    transition-duration: 150ms;
+    transition-timing-function: var(--ease);
+  }
+  button:not(:disabled):active { transform: scale(0.97); }
+}
+
+/* Floating panels: soft layered shadow, a thin highlight on the top edge and a blurred backdrop. */
+.glass {
+  background: color-mix(in srgb, var(--surface) 88%, transparent);
+  -webkit-backdrop-filter: blur(14px) saturate(1.15);
+  backdrop-filter: blur(14px) saturate(1.15);
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow), inset 0 1px 0 var(--edge);
+}
+
+/* Switching theme fades colours instead of snapping. Added for 300 ms by the toggle (see ui.ts). */
+html.theme-anim, html.theme-anim *, html.theme-anim *::before, html.theme-anim *::after {
+  transition: background-color 250ms var(--ease), border-color 250ms var(--ease), color 250ms var(--ease), fill 250ms var(--ease), stroke 250ms var(--ease) !important;
+}
+
+/* Entrances. Used by popovers, modals, cards and toasts. */
+@keyframes pop-in { from { opacity: 0; transform: scale(0.95) translateY(4px); } to { opacity: 1; transform: none; } }
+@keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes rise-in { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+.pop-in { animation: pop-in 150ms var(--ease) both; transform-origin: top right; }
+.pop-in-center { animation: pop-in 150ms var(--ease) both; transform-origin: center; }
+.fade-in { animation: fade-in 200ms var(--ease) both; }
+.rise-in { animation: rise-in 260ms var(--ease) both; }
+
+/* the "saving" dot breathes */
+@keyframes breathe { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
+.breathe { animation: breathe 1.1s ease-in-out infinite; }
+
 @media (prefers-reduced-motion: reduce) {
-  * { transition-duration: 0.01ms !important; animation-duration: 0.01ms !important; }
+  *, *::before, *::after { transition-duration: 0.01ms !important; animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; }
 }
 
 /* a reaction drifts up and fades out */
@@ -64,3 +112,44 @@ body {
   to { transform: translate(-50%, -120px) scale(1); opacity: 0; }
 }
 .reaction-float { animation: reaction-float 3.4s ease-out forwards; }
+
+/* landing page: a little demo board that draws itself */
+@keyframes demo-note { from { opacity: 0; transform: translateY(8px) rotate(-3deg) scale(0.96); } to { opacity: 1; transform: rotate(-1.5deg); } }
+@keyframes demo-draw { from { stroke-dashoffset: var(--len, 200); } to { stroke-dashoffset: 0; } }
+@keyframes demo-cursor {
+  0% { transform: translate(0, 0); }
+  35% { transform: translate(120px, -26px); }
+  70% { transform: translate(40px, 34px); }
+  100% { transform: translate(0, 0); }
+}
+.demo-note { animation: demo-note 700ms var(--ease) 200ms both; }
+.demo-line { stroke-dasharray: var(--len, 200); animation: demo-draw 900ms var(--ease) 700ms both; }
+.demo-cursor { animation: demo-cursor 7s ease-in-out 1.2s infinite; }
+
+/* Dotted backdrop used by the sign-in page and the landing hero (same dots as the board). */
+.dot-bg {
+  background-image: radial-gradient(var(--dot) 1.2px, transparent 1.2px);
+  background-size: 24px 24px;
+}
+/* A soft indigo glow behind a centred card. */
+.glow-bg::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: radial-gradient(520px 320px at 50% 38%, color-mix(in srgb, #4f46e5 14%, transparent), transparent 70%);
+}
+/* Input with a calm focus ring. */
+.field {
+  width: 100%;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: var(--canvas);
+  padding: 0.6rem 0.75rem;
+  font-size: 0.875rem;
+  outline: none;
+}
+.field::placeholder { color: var(--muted); }
+.field:hover { border-color: color-mix(in srgb, var(--muted) 45%, var(--line)); }
+.field:focus { border-color: #4f46e5; box-shadow: 0 0 0 3px rgb(79 70 229 / 0.18); }
+.field[aria-invalid="true"] { border-color: #ef4444; box-shadow: 0 0 0 3px rgb(239 68 68 / 0.14); }

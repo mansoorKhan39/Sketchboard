@@ -7,6 +7,7 @@ import BoardThumb from "./BoardThumb";
 import ThemeToggle from "./ThemeToggle";
 import AccountMenu from "./AccountMenu";
 import Logo from "./Logo";
+import Landing from "./Landing";
 
 const timeAgo = (t: number) => {
   const s = Math.max(0, (Date.now() - t) / 1000);
@@ -181,13 +182,24 @@ export default function Dashboard() {
           <span className="text-[17px] font-semibold tracking-tight">Sketchboard</span>
         </div>
         <div className="flex items-center gap-2">
+          <button
+            onClick={() => void create("Untitled board", [])}
+            data-testid="new-board-top"
+            className="mr-1 hidden h-9 items-center gap-1.5 rounded-[10px] bg-brand px-3.5 text-sm font-medium text-white shadow-[0_1px_2px_rgb(79_70_229/0.4),0_6px_14px_-6px_rgb(79_70_229/0.6)] hover:bg-brand-strong sm:flex"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round"><path d="M12 5v14M5 12h14" /></svg>
+            New board
+          </button>
           <ThemeToggle />
           <AccountMenu />
         </div>
       </header>
 
       <main className="mx-auto max-w-6xl px-6 pb-20">
-        <section className="pt-6">
+        {!user && boards.length === 0 && !loading && (
+          <Landing onStart={() => void create("Untitled board", [])} onLogin={() => go({ name: "auth" })} />
+        )}
+        <section className="pt-10">
           <h1 className="text-3xl font-semibold tracking-tight">Start a board</h1>
           <p className="mt-1 max-w-xl text-[15px] text-muted">
             Pick a template or begin with a blank canvas.{" "}

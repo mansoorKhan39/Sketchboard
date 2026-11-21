@@ -10,3 +10,12 @@ export const BRAND = "#4F46E5";
 export const INK_DEFAULT = "#1F2937";
 export const inkFor = (color: string, theme: "light" | "dark") =>
   theme === "dark" && color.toLowerCase() === INK_DEFAULT.toLowerCase() ? "#E8EAF3" : color;
+
+// Mix a #rrggbb colour towards another one (t = 0 keeps `a`, t = 1 gives `b`). Used for paper shading.
+export const mixHex = (a: string, b: string, t: number) => {
+  const p = (h: string) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16));
+  const [r1, g1, b1] = p(a.length === 7 ? a : "#FFD43B");
+  const [r2, g2, b2] = p(b);
+  const c = (x: number, y: number) => Math.round(x + (y - x) * t).toString(16).padStart(2, "0");
+  return `#${c(r1, r2)}${c(g1, g2)}${c(b1, b2)}`;
+};

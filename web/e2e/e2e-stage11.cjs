@@ -5,7 +5,7 @@ const { chromium } = require('playwright');
   const p = await (await b.newContext({ viewport: { width: 1280, height: 800 } })).newPage();
   const errs = []; p.on('pageerror', e => errs.push(String(e)));
   const objs = () => p.evaluate(() => window.__board.getState().objects);
-  await p.goto('http://localhost:5173/'); await p.waitForTimeout(900);
+  await p.goto('http://localhost:5173/#/'); await p.waitForTimeout(900);
 
   // ---- templates ----
   const names = await p.locator('[data-testid^="template-"]').allTextContents();
