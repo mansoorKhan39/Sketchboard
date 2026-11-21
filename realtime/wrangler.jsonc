@@ -7,7 +7,7 @@
   "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Room"] }],
   "vars": {
     // Address of the website/API (where /api/v1/internal/... lives). Change it after deploying to Vercel.
-    "API_BASE": "http://localhost:5173"
+    "API_BASE": "https://sketchboard-ruby.vercel.app"
   }
   // Secret (not stored here):  REALTIME_SECRET
   //   local: put it in .dev.vars      production: npx wrangler secret put REALTIME_SECRET
