@@ -50,21 +50,38 @@ export function readToken(token: string | undefined, secret: string, now = Date.
   }
 }
 
-// ---------- realtime join token ----------
-// A short-lived pass that lets the browser open a WebSocket to ONE board's room. The realtime service
-// (a separate Cloudflare Worker) checks it with the same REALTIME_SECRET. Format matches realtime/src/token.ts.
-export const JOIN_TOKEN_MINUTES = 2;
+// ---------- live collaboration pass (Ably) ----------
+// Ably is the service that carries live edits. The browser never sees our Ably API key; instead the server signs a
+// short-lived JWT that says "this person may use THESE channels, and only do THESE things". Ably checks the signature.
+export const ABLY_TOKEN_MINUTES = 60;
 
-export interface JoinClaims {
-  b: string; // board id
-  u: string; // user id, or a made-up id for guests
-  n: string; // display name
-  r: "owner" | "editor" | "viewer";
+export type Role = "owner" | "editor" | "viewer";
+
+// Channels per board:
+//   board:<id>  — the edits. Everybody may listen; only owners and editors may publish (so a viewer cannot change anything).
+//   cur:<id>    — pointer positions and "who is here". Everybody may take part.
+export function ablyCapability(boardId: string, role: Role): Record<string, string[]> {
+  const canEdit = role !== "viewer";
+  return {
+    [`board:${boardId}`]: canEdit ? ["subscribe", "publish", "history"] : ["subscribe", "history"],
+    [`cur:${boardId}`]: ["subscribe", "publish", "presence"],
+  };
 }
 
-export function createJoinToken(claims: JoinClaims, secret: string, now = Date.now()): string {
-  const payload = b64(JSON.stringify({ ...claims, exp: now + JOIN_TOKEN_MINUTES * 60_000 }));
-  return `${payload}.${sign(payload, secret)}`;
+export function createAblyToken(apiKey: string, claims: { clientId: string; boardId: string; role: Role }, now = Date.now()): string {
+  const sep = apiKey.indexOf(":");
+  const keyName = apiKey.slice(0, sep), keySecret = apiKey.slice(sep + 1);
+  const iat = Math.floor(now / 1000);
+  const header = b64(JSON.stringify({ typ: "JWT", alg: "HS256", kid: keyName }));
+  const body = b64(
+    JSON.stringify({
+      iat,
+      exp: iat + ABLY_TOKEN_MINUTES * 60,
+      "x-ably-capability": JSON.stringify(ablyCapability(claims.boardId, claims.role)),
+      "x-ably-clientId": claims.clientId,
+    }),
+  );
+  return `${header}.${body}.${createHmac("sha256", keySecret).update(`${header}.${body}`).digest("base64url")}`;
 }
 
 export function safeEqual(a: string, b: string): boolean {

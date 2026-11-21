@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { newMessage, countOpen, MAX_THREAD, MAX_COMMENT_CHARS } from "./comments.js";
 import { diffOps, applyOps } from "./realtime/ops.js";
-import { isObj } from "../../realtime/src/validate.js";
+import { isObj } from "./realtime/validate.js";
 import { contentBounds } from "./geometry.js";
 import type { BoardObject, CommentObj } from "./types";
 

@@ -37,11 +37,8 @@ export function createNodeHandler(store?: Store) {
   devStore = store ?? devStore ?? new FileStore(join(process.cwd(), ".data", "db.json"));
   const handle = createApi(devStore, {
     secret: process.env.SESSION_SECRET ?? "dev-only-secret-change-me",
-    // in development the realtime service (npm run dev in /realtime) is expected on port 8787
-    realtime: {
-      secret: process.env.REALTIME_SECRET ?? "dev-realtime-secret-change-me",
-      url: process.env.REALTIME_URL ?? "ws://localhost:8787",
-    },
+    // live collaboration needs an Ably key (ABLY_API_KEY); without it boards work alone
+    ablyKey: process.env.ABLY_API_KEY,
   });
 
   return async (req: IncomingMessage, res: ServerResponse) => {

@@ -8,16 +8,13 @@ import type { ApiRequest } from "./_lib/types.js";
 
 const uri = process.env.MONGODB_URI;
 const secret = process.env.SESSION_SECRET;
-// optional: live collaboration (a Cloudflare Worker, see /realtime and DEPLOY.md)
-const realtime =
-  process.env.REALTIME_URL && process.env.REALTIME_SECRET
-    ? { url: process.env.REALTIME_URL, secret: process.env.REALTIME_SECRET }
-    : undefined;
+// optional: live collaboration through Ably (see DEPLOY.md)
+const ablyKey = process.env.ABLY_API_KEY;
 
 // Built once per warm instance and reused, so the database connection is reused too.
 const handle =
   uri && secret
-    ? createApi(createMongoStore(uri, process.env.MONGODB_DB ?? "sketchboard"), { secret, realtime })
+    ? createApi(createMongoStore(uri, process.env.MONGODB_DB ?? "sketchboard"), { secret, ablyKey })
     : null;
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {

@@ -1,7 +1,7 @@
 import { test, before } from "node:test";
 import assert from "node:assert/strict";
 import { isHiddenFrom, isPrivate, togglePrivate } from "./extras.js";
-import { isObj } from "../../realtime/src/validate.js";
+import { isObj } from "./realtime/validate.js";
 import type { BoardObject } from "./types";
 
 // The store and the templates are written for a browser, so give Node a tiny pretend one.

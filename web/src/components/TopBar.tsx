@@ -74,7 +74,7 @@ export default function TopBar() {
         <span
           data-testid="save-status"
           className={`mr-2 flex items-center gap-1.5 whitespace-nowrap text-xs ${
-            saveStatus === "error" && connection === "off" ? "text-red-500" : "text-muted"
+            saveStatus === "error" ? "text-red-500" : "text-muted"
           }`}
         >
           {connection !== "off" && (

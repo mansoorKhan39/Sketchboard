@@ -3,7 +3,7 @@ import { z } from "zod";
 import type { Store } from "./store.js";
 import type { ApiRequest, ApiResponse, BoardRec, UserRec, Viewport } from "./types.js";
 import { addVersion } from "./versions.js";
-import { SESSION_DAYS, createJoinToken, createToken, hashPassword, readToken, safeEqual, verifyPassword } from "./security.js";
+import { SESSION_DAYS, createAblyToken, createToken, hashPassword, readToken, verifyPassword } from "./security.js";
 
 export const COOKIE = "sb_session";
 const MAX_BOARD_BYTES = 3_000_000; // Vercel allows 4.5 MB per request; stay below it
@@ -41,7 +41,7 @@ const SaveBody = z.object({ objects: z.array(BoardObject).max(5000), viewport: V
 const VersionBody = z.object({ label: z.string().trim().max(60).optional(), objects: z.array(BoardObject).max(5000) });
 const RenameBody = z.object({ name: Name });
 const ShareBody = z.object({ enabled: z.boolean(), right: z.enum(["viewer", "editor"]).optional(), regenerate: z.boolean().optional() });
-const JoinBody = z.object({ name: z.string().trim().max(40).optional() });
+const JoinBody = z.object({ name: z.string().trim().max(40).optional(), guestId: z.string().regex(/^g_[A-Za-z0-9_-]{6,16}$/).optional() });
 const StateBody = z.object({ objects: z.array(BoardObject).max(5000) });
 
 // `plain` = show only the message (used for the sign-in forms, where the message is written for people)
@@ -63,8 +63,8 @@ const publicBoard = (b: BoardRec) => ({
 
 export interface ApiConfig {
   secret: string;
-  // Live collaboration. When missing, boards still work alone; share/join endpoints answer "not set up".
-  realtime?: { secret: string; url: string }; // url like wss://sketchboard-realtime.<you>.workers.dev
+  // Live collaboration through Ably. When missing, boards still work alone; share/join endpoints answer "not set up".
+  ablyKey?: string; // "<appId>.<keyId>:<secret>" from the Ably dashboard
 }
 
 export function createApi(store: Store, config: ApiConfig) {
@@ -100,35 +100,16 @@ export function createApi(store: Store, config: ApiConfig) {
   const realtimeOff = () =>
     fail(503, "realtime_not_configured", "Live collaboration is not set up on this server yet.");
 
-  const joinResponse = (board: BoardRec, uid: string, name: string, role: "owner" | "editor" | "viewer") => {
-    if (!config.realtime) throw realtimeOff();
-    const token = createJoinToken({ b: board.id, u: uid, n: name, r: role }, config.realtime.secret);
-    return json(200, { token, wsUrl: `${config.realtime.url.replace(/\/$/, "")}/ws/${board.id}`, role, boardId: board.id, name: board.name });
+  // The pass that lets this browser use the board's Ably channels. `clientId` is who they are on the channel.
+  const joinResponse = (board: BoardRec, clientId: string, name: string, role: "owner" | "editor" | "viewer") => {
+    if (!config.ablyKey) throw realtimeOff();
+    const token = createAblyToken(config.ablyKey, { clientId, boardId: board.id, role });
+    return json(200, { token, clientId, role, boardId: board.id, name: board.name, you: name });
   };
-
-  async function internal(req: ApiRequest, seg: string[], method: string): Promise<ApiResponse> {
-    const key = req.headers["x-realtime-key"];
-    if (!config.realtime || !key || !safeEqual(key, config.realtime.secret)) throw fail(401, "unauthorized", "Not allowed.");
-    if (seg[1] === "boards" && seg[2] && seg[3] === "state") {
-      const board = await store.getBoard(seg[2]);
-      if (!board) throw fail(404, "not_found", "Board not found.");
-      if (method === "GET") return json(200, { objects: board.objects, name: board.name });
-      if (method === "PUT") {
-        const { objects } = parse(StateBody, req.body);
-        checkSize(objects);
-        await store.updateBoard(board.id, { objects, updatedAt: Date.now() });
-        return json(200, { ok: true });
-      }
-    }
-    throw fail(404, "not_found", "That address does not exist.");
-  }
 
   async function route(req: ApiRequest): Promise<ApiResponse> {
     const method = req.method.toUpperCase();
     const seg = req.path.split("?")[0].split("/").filter(Boolean);
-
-    // Internal address used only by the realtime service. It proves itself with a shared secret instead of a cookie.
-    if (seg[0] === "internal") return internal(req, seg, method);
 
     // CSRF defence: a page on another site can send our cookie, but it cannot add this custom header
     // without a CORS preflight, which we never allow.
@@ -169,12 +150,24 @@ export function createApi(store: Store, config: ApiConfig) {
       const board = await store.findBoardByShareToken(seg[1]);
       if (!board?.share?.enabled) throw fail(404, "not_found", "This link is not active.");
       if (method === "GET" && !seg[2]) return json(200, { board: { id: board.id, name: board.name }, right: board.share.right });
+      // The current content of the board, for someone who opened the link (or for the screen that saves it back).
+      if (seg[2] === "state" && method === "GET") return json(200, { objects: board.objects });
+      if (seg[2] === "state" && method === "PUT") {
+        // Whoever edits through the link saves the board (the owner may not be online). Viewers cannot.
+        const user = await currentUser(req);
+        if (board.share.right !== "editor" && user?.id !== board.ownerId) throw fail(403, "forbidden", "You can only view this board.");
+        const { objects } = parse(StateBody, req.body);
+        checkSize(objects);
+        await store.updateBoard(board.id, { objects, updatedAt: Date.now() });
+        return json(200, { ok: true });
+      }
       if (method === "POST" && seg[2] === "join") {
-        const { name } = parse(JoinBody, req.body);
+        const { name, guestId } = parse(JoinBody, req.body);
         const user = await currentUser(req);
         const isOwner = user?.id === board.ownerId;
         const role = isOwner ? "owner" : board.share.right;
-        return joinResponse(board, user ? user.id : `g_${nanoid(8)}`, user ? user.name : name || "Guest", role);
+        // a guest keeps the same id when the pass is renewed (Ably requires it)
+        return joinResponse(board, user ? user.id : guestId ?? `g_${nanoid(8)}`, user ? user.name : name || "Guest", role);
       }
     }
 
@@ -226,7 +219,7 @@ export function createApi(store: Store, config: ApiConfig) {
         if (method === "GET") return json(200, { share: board.share ?? null });
         if (method === "PUT") {
           const body = parse(ShareBody, req.body);
-          if (!config.realtime) throw realtimeOff(); // a link is useless without live editing
+          if (!config.ablyKey) throw realtimeOff(); // a link is useless without live editing
           const old = board.share;
           const share = {
             enabled: body.enabled,

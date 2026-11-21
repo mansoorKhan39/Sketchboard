@@ -25,11 +25,12 @@ export interface VersionInfo {
 }
 
 export interface JoinInfo {
-  token: string; // short-lived pass for the realtime room
-  wsUrl: string;
+  token: string; // pass for the board's live channels (made by the server, limited to what this person may do)
+  clientId: string; // who we are on those channels
   role: "owner" | "editor" | "viewer";
   boardId: string;
-  name: string;
+  name: string; // the board's name
+  you: string; // the name other people see for us
 }
 export interface ShareSettings {
   enabled: boolean;
@@ -75,7 +76,9 @@ export const api = {
   renameBoard: (id: string, name: string) => call<{ name: string }>("PATCH", `/boards/${id}`, { name }),
   deleteBoard: (id: string) => call<void>("DELETE", `/boards/${id}`),
   joinBoard: (id: string) => call<JoinInfo>("POST", `/boards/${id}/join`),
-  shareJoin: (token: string, name: string) => call<JoinInfo>("POST", `/share/${token}/join`, { name }),
+  shareJoin: (token: string, name: string, guestId?: string) => call<JoinInfo>("POST", `/share/${token}/join`, { name, guestId }),
+  getShareState: (token: string) => call<{ objects: BoardObject[] }>("GET", `/share/${token}/state`),
+  saveShared: (token: string, objects: BoardObject[]) => call<{ ok: true }>("PUT", `/share/${token}/state`, { objects }),
   getShare: (id: string) => call<{ share: ShareSettings | null }>("GET", `/boards/${id}/share`),
   setShare: (id: string, body: { enabled: boolean; right?: "viewer" | "editor"; regenerate?: boolean }) =>
     call<{ share: ShareSettings }>("PUT", `/boards/${id}/share`, body),

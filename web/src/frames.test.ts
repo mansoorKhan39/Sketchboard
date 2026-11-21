@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { sortedFrames, frameFit, insideFrame } from "./geometry.js";
-import { isObj } from "../../realtime/src/validate.js";
+import { isObj } from "./realtime/validate.js";
 import type { BoardObject, FrameObj } from "./types";
 
 const frame = (id: string, slide: number, x = 0, y = 0, width = 640, height = 360): FrameObj => ({

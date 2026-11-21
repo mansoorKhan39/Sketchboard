@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { newTimer, startTimer, pauseTimer, resetTimer, setTimerLength, timerLeft, timerRunning, formatTime, newVote, votesOn, myVotes, newReaction, isStale, REACTION_LIFE } from "./extras.js";
 import { isOverlay, withLiveParts } from "./kinds.js";
-import { isObj } from "../../realtime/src/validate.js";
+import { isObj } from "./realtime/validate.js";
 import { contentBounds } from "./geometry.js";
 import type { BoardObject, TimerObj } from "./types";
 

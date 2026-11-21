@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { fitInside, contentBounds } from "./geometry.js";
 import { diffOps, applyOps } from "./realtime/ops.js";
-import { checkOps, isObj, MAX_IMAGE_BYTES } from "../../realtime/src/validate.js";
+import { checkOps, isObj, MAX_IMAGE_BYTES } from "./realtime/validate.js";
 import type { BoardObject } from "./types";
 
 const pic = (id: string, src = "data:image/webp;base64,AAAA"): BoardObject =>

@@ -162,7 +162,7 @@ export const useBoard = create<BoardState>((set, get) => ({
       get().fitToContent(window.innerWidth, window.innerHeight);
     }
     // Signed-in users' boards open a live room (so others can join). If that is not possible the board simply works alone.
-    if (getRepo().kind === "cloud") startRealtime(id, () => api.joinBoard(id));
+    if (getRepo().kind === "cloud") startRealtime(id, () => api.joinBoard(id), async () => (await api.getBoard(id)).board.objects);
     return "ok";
   },
 
@@ -194,7 +194,7 @@ export const useBoard = create<BoardState>((set, get) => ({
       past: [],
       future: [],
     });
-    startRealtime(info.boardId, () => api.shareJoin(token, name));
+    startRealtime(info.boardId, (prev) => api.shareJoin(token, name, prev), async () => (await api.getShareState(token)).objects);
     return "ok";
   },
 
@@ -434,12 +434,14 @@ let queue: Promise<void> = Promise.resolve();
 export function flushSave(): Promise<void> {
   clearTimeout(timer);
   const s = useBoard.getState();
-  // While connected to a room (or opened by share link) the ROOM saves the board, never this screen.
-  if (!s.boardId || s.mode === "shared" || s.connection !== "off") return queue;
-  const { boardId, objects, viewport } = s; // snapshot now; the user may keep editing while we wait
+  // Whoever edits saves the board (live editing only carries changes between screens; the server keeps the copy).
+  // A viewer has nothing to save.
+  if (!s.boardId || s.role === "viewer") return queue;
+  const { boardId, objects, viewport, mode, sharedToken } = s; // snapshot now; the user may keep editing while we wait
   queue = queue.then(async () => {
     try {
-      await getRepo().save(boardId, objects, viewport);
+      if (mode === "shared" && sharedToken) await api.saveShared(sharedToken, objects);
+      else await getRepo().save(boardId, objects, viewport);
       const now = useBoard.getState();
       if (now.boardId === boardId && now.objects === objects) useBoard.setState({ saveStatus: "saved" });
     } catch {
@@ -456,7 +458,7 @@ useBoard.subscribe((s, prev) => {
   if (!s.boardId || s.boardId !== prev.boardId) return; // just opened/closed a board — nothing new to save
   // a change made on this screen: tell the room (it will pass it on to everyone else)
   if (remoteDepth === 0 && s.objects !== prev.objects && isActive()) sendOps(diffOps(prev.objects, s.objects));
-  if (s.mode === "shared" || s.connection !== "off") return;
+  if (s.role === "viewer" || remoteDepth > 0) return; // changes that came from someone else are saved by that person
   if (s.objects === prev.objects && s.viewport === prev.viewport) return;
   if (s.saveStatus !== "saving") useBoard.setState({ saveStatus: "saving" });
   clearTimeout(timer);

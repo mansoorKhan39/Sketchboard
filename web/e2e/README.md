@@ -7,14 +7,13 @@ Playwright is not part of the project's dependencies. Install it once, outside t
 
 Run (start `npm run dev` first; delete `web/.data` before each run to start clean):
 
-    NODE_PATH=$(npm root -g) node e2e/e2e-images.cjs     # pictures + Export PNG (guest mode, no Worker needed)
+    NODE_PATH=$(npm root -g) node e2e/e2e-images.cjs     # pictures + Export PNG (guest mode)
     NODE_PATH=$(npm root -g) node e2e/e2e-frames.cjs      # frames, moving contents, presentation mode (guest mode)
     NODE_PATH=$(npm root -g) node e2e/e2e-comments.cjs    # comment pins, replies, resolve, delete (guest mode)
     NODE_PATH=$(npm root -g) node e2e/e2e-history.cjs     # version history: save, restore, undo, limit of 5 (guest + signed-in)
     NODE_PATH=$(npm root -g) node e2e/e2e-extras.cjs      # timer, voting, emoji reactions (guest mode)
     NODE_PATH=$(npm root -g) node e2e/e2e-stage11.cjs     # templates, mind map keys (Tab/Enter), private mode (guest mode)
     NODE_PATH=$(npm root -g) node e2e/e2e-solo.cjs       # live editing unreachable: falls back to normal saving
-    NODE_PATH=$(npm root -g) node e2e/e2e-rt.cjs         # two windows, share link, viewer rules (needs `wrangler dev` in realtime/)
 
 Each line printed starts with PASS or FAIL. `e2e-solo` and `e2e-rt` expect the account alice@example.com to exist
 (e2e-rt creates it).

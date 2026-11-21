@@ -1,4 +1,4 @@
-import { defineConfig, type Plugin } from "vite";
+import { defineConfig, loadEnv, type Plugin } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 
@@ -21,6 +21,8 @@ function devApi(): Plugin {
   };
 }
 
-export default defineConfig({
-  plugins: [react(), tailwindcss(), devApi()],
+export default defineConfig(({ mode }) => {
+  // let the dev API read web/.env (for example ABLY_API_KEY) the same way Vercel gives it environment variables
+  for (const [k, v] of Object.entries(loadEnv(mode, process.cwd(), ""))) process.env[k] ??= v;
+  return { plugins: [react(), tailwindcss(), devApi()] };
 });

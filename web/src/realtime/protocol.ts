@@ -1,4 +1,4 @@
-// Messages between the browser and the room. Keep in sync with realtime/src/protocol.ts (the server copy).
+// Shapes of the board data and of the messages between browsers.
 
 export type ObjType = "sticky" | "shape" | "stroke" | "text" | "image" | "frame" | "comment" | "vote" | "timer" | "reaction" | "settings" | "connector";
 export interface Obj {
@@ -28,23 +28,24 @@ export interface Peer {
   role: Role;
 }
 
-export type ClientMsg =
-  | { t: "edit"; editId: string; ops: Op[] }
-  | { t: "cursor"; x: number; y: number };
-
-export type ServerMsg =
-  | { t: "welcome"; you: Peer; seq: number; objects: Obj[]; peers: Peer[] }
-  | { t: "ack"; editId: string; seq: number }
-  | { t: "edit"; seq: number; from: string; ops: Op[] }
-  | { t: "reject"; editId: string; reason: string; message: string }
-  | { t: "presence"; peers: Peer[] }
-  | { t: "cursor"; from: string; x: number; y: number };
-
-// WebSocket close codes we use
-export const CLOSE = {
-  BAD_TOKEN: 4001,
-  FORBIDDEN: 4003,
-  NOT_FOUND: 4004,
-  RATE_LIMIT: 4008,
-  TOKEN_EXPIRED: 4010,
-} as const;
+// What travels over Ably. Edits go on the channel "board:<id>" under the message name "edit"; if one is too big for a
+// single message it is cut into pieces named "chunk" (see chunks.ts). Pointers go on "cur:<id>" as "c".
+export interface EditMsg {
+  ops: Op[];
+}
+export interface ChunkMsg {
+  eid: string; // which edit these pieces belong to
+  i: number; // piece number, from 0
+  n: number; // how many pieces in all
+  s: string; // this piece of the JSON text
+}
+export interface CursorMsg {
+  x: number;
+  y: number;
+}
+// What each person publishes about themselves with "who is here" (Ably presence).
+export interface PresenceData {
+  name: string;
+  color: string;
+  role: Role;
+}

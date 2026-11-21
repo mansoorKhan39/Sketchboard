@@ -7,7 +7,7 @@ Live collaboration: several people on one board at the same time. Share button (
 "Can view" or "Can edit", copy it. Visitors need no account. You see each other's changes instantly, live cursors
 and avatars, and viewers cannot edit (enforced by the server, not only hidden in the UI). Undo only reverts your own
 last action. If the connection drops, your changes are kept and sent again after reconnecting.
-If the realtime service is not running, boards simply work alone like before.
+If live collaboration is not set up (no `ABLY_API_KEY`), boards simply work alone like before.
 
 ## Run
 ```bash
@@ -29,22 +29,18 @@ marquee selection (drag on empty space), moving several objects together, select
 V select · N sticky · S shape · P pen · T text · L connector · Space+drag pan · wheel zoom · Shift+1 fit ·
 Ctrl/Cmd+Z undo · Ctrl/Cmd+Shift+Z redo · Ctrl/Cmd+C/V/D copy/paste/duplicate · Delete remove · Double-click = edit text
 
-Live collaboration locally (needs a second terminal):
-```bash
-cd realtime
-npm install
-cp .dev.vars.example .dev.vars     # the secret; the website uses the same default in development
-npm run dev                        # Cloudflare Worker on http://localhost:8787
+Live collaboration locally: make a free account at ably.com, copy an API key, and put it in `web/.env`:
 ```
-Then use two different browsers (or one normal + one private window): sign in, open a board, press Share, open the link in the other.
+ABLY_API_KEY=appId.keyId:secret
+```
+Then `npm run dev` as usual. Use two different browsers (or one normal + one private window): sign in, open a board, press Share, open the link in the other. Without the key everything else still works.
 
-Going online: see `DEPLOY.md` (Atlas + Vercel + Cloudflare, free, no card).
+Going online: see `DEPLOY.md` (Atlas + Vercel + Ably, free, no card).
 
-## Realtime service (realtime/)
-- `src/index.ts` — front door: checks the join token, passes the connection to the board's room
-- `src/room.ts` — the room (one Durable Object per board): keeps the board in memory + SQLite, puts edits in one order, sends ack/edits/presence/cursors, rate limits, saves to the database via the API every few seconds
-- `src/validate.ts`, `token.ts`, `protocol.ts` — input checks, token check, message types
-- Browser side: `web/src/realtime/` (`connection.ts`, `ops.ts`, `protocol.ts`)
+## Live collaboration (Ably)
+- Server (`web/api/_lib/`): `security.ts` signs a one-hour Ably pass per person (`createAblyToken`) that allows only that board's two channels; a viewer's pass cannot publish edits. `core.ts` hands it out at `POST /boards/:id/join` and `POST /share/:token/join`, and serves `GET|PUT /share/:token/state` so guests can load and save the board.
+- Browser (`web/src/realtime/`): `connection.ts` joins the channels `board:<id>` (edits) and `cur:<id>` (pointers and who is here), loads the board from the server, applies edits from others, and keeps unconfirmed edits until they are sent. `chunks.ts` cuts big edits (pictures) into pieces under Ably's 64 KB message limit. `ops.ts` turns changes into small operations and back; `validate.ts` checks every edit that arrives.
+- Saving: whoever edits saves the whole board to the server a moment after their own change (`flushSave` in `store.ts`). Changes that came from other people are saved by those people.
 
 ## API (web/api/)
 - `_lib/core.ts` — all routes: `/auth/register|login|logout|me`, `/boards` (list, create), `/boards/:id` (get, PUT save, PATCH rename, DELETE), `/boards/:id/duplicate`
@@ -64,7 +60,7 @@ Going online: see `DEPLOY.md` (Atlas + Vercel + Cloudflare, free, no card).
 - persist.ts — boards list + per-board save/load in localStorage
 - api.ts, auth.ts, repo.ts — server calls, who is signed in, and "local vs cloud" board storage
 - components/AuthScreen.tsx, AccountMenu.tsx — sign in / sign up, account menu
-- realtime/ — connection to the room, and turning changes into small operations (and back)
+- realtime/ — Ably connection, big-message pieces, and turning changes into small operations (and back)
 - components/ShareDialog.tsx, PeerCursors.tsx — share panel, other people's cursors
 - ui.ts — theme and which screen is open (from the address bar)
 - templates.ts — Brainstorm, Kanban, Flowchart
@@ -75,5 +71,6 @@ Going online: see `DEPLOY.md` (Atlas + Vercel + Cloudflare, free, no card).
 ## Known limits (planned for later stages)
 Changing stacking order (bring to front) is not synced. Share rights are checked when someone joins, so changing a link
 only affects people who open it afterwards. Guests are all called "Guest". No comments, no board members list, no
-password reset. The MongoDB code and the Vercel entry file could not be run against a real Atlas/Vercel here; the
-Cloudflare room was tested with the real Workers runtime (workerd) locally, but not on Cloudflare's network.
+password reset. The live connection code was tested against a fake Ably (65 unit tests in all), not against the real Ably network. Edits
+from two people at once are merged field by field (last one wins for the same field), and the stacking order of objects
+can differ slightly between screens because there is no single server putting edits in one order.
