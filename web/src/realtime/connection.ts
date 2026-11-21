@@ -55,8 +55,9 @@ export interface RtClient {
 export type ClientFactory = (opts: { authCallback: (data: unknown, cb: (err: string | null, token: string | null) => void) => void }) => Promise<RtClient>;
 
 const defaultFactory: ClientFactory = async (opts) => {
-  const Ably = await import("ably"); // loaded only when a live board is opened, so the first page stays light
-  return new Ably.Realtime({ ...opts, echoMessages: false, autoConnect: true }) as unknown as RtClient;
+  // Ably's newer accounts (MAU pricing) must use the "device" package; the old `ably` package is refused with error 40168.
+  const { createClient } = await import("@ably/pubsub-device"); // loaded only when a live board is opened, so the first page stays light
+  return createClient({ ...opts, echoMessages: false, autoConnect: true }) as unknown as RtClient;
 };
 let factory: ClientFactory = defaultFactory;
 export function setClientFactoryForTests(f: ClientFactory | null) {
@@ -90,7 +91,7 @@ export function startRealtime(boardId: string, fetchJoin: (previousClientId?: st
   set({ connection: "connecting", peers: [], cursors: {}, me: null, notice: "" });
   const gen = generation;
   giveUpTimer = setTimeout(() => {
-    if (session && !session.everLive) giveUp(gen, "");
+    if (session && !session.everLive) giveUp(gen, "Could not connect to this board. (timed out)", "connect timeout");
   }, CONNECT_TIMEOUT_MS);
   void connect(gen);
 }
@@ -166,7 +167,7 @@ async function connect(gen: number) {
     if (change.current === "connected") {
       myId = c.connection.id ?? myId;
     } else if (change.current === "failed") {
-      giveUp(gen, "Could not connect to this board.");
+      giveUp(gen, `Could not connect to this board. (${why(change.reason)})`, change.reason);
     } else if (["disconnected", "suspended", "connecting"].includes(change.current) && session?.everLive) {
       set({ connection: "offline" });
     }
@@ -179,7 +180,7 @@ async function connect(gen: number) {
     // first time, or Ably could not replay everything we missed: load the board again to be sure
     if (gen === generation && (!session?.ready || change.resumed === false)) void sync(gen);
   });
-  edits.on("failed", (change) => giveUp(gen, change.reason?.code === 40160 ? "You do not have access to this board." : "Could not connect to this board."));
+  edits.on("failed", (change) => giveUp(gen, change.reason?.code === 40160 ? "You do not have access to this board." : `Could not connect to this board. (${why(change.reason)})`, change.reason));
 
   cur.subscribe("c", (m) => {
     const d = m.data as CursorMsg | undefined;
@@ -262,8 +263,12 @@ async function refreshPeers(gen: number) {
   }
 }
 
-function giveUp(gen: number, message: string) {
+// Ably's reason, short enough for the notice, e.g. "40101 invalid credentials" (also printed in the browser console)
+const why = (r?: { code?: number; message?: string } | null) => (r ? `${r.code ?? ""} ${String(r.message ?? "").slice(0, 80)}`.trim() : "no reason given");
+
+function giveUp(gen: number, message: string, detail?: unknown) {
   if (gen !== generation) return;
+  if (detail !== undefined) console.warn("[sketchboard realtime] gave up:", detail);
   const wasLive = session?.everLive ?? false;
   stopRealtime();
   set({ notice: message || (useBoard.getState().mode === "shared" ? "Could not connect to this board." : "") });
