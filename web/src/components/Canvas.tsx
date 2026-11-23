@@ -15,6 +15,8 @@ import { centerOf } from "../geometry";
 import TextEditor from "./TextEditor";
 import { placeImages, toWorld } from "../image";
 import { registerStage } from "../exportPng";
+import { panNow, stopMotion, wheelZoom } from "../navigation";
+import { edgePanSpeed, pinchStep, wheelIntent } from "../viewport";
 
 export const lastShapeKind: { current: ShapeKind } = { current: "rect" };
 
@@ -39,9 +41,15 @@ export default function Canvas({ spaceDown }: { spaceDown: boolean }) {
   const viewport = useBoard((s) => s.viewport);
   const editingId = useBoard((s) => s.editingId);
   const canEdit = useBoard((s) => s.role !== "viewer");
-  const { setViewport, zoomBy, select, addObject, updateObjects, setTool, setEditing } = useBoard.getState();
+  const { select, addObject, updateObjects, setTool, setEditing } = useBoard.getState();
 
   const theme = useUI((s) => s.theme);
+  const wheelMode = useUI((s) => s.wheelMode);
+  const boxRef = useRef<HTMLDivElement>(null);
+  // moving the view with the hand: Space held, the Hand tool, or the middle mouse button (and one finger on a touch screen)
+  const panMode = spaceDown || tool === "hand";
+  const panRef = useRef<{ x: number; y: number } | null>(null);
+  const [panning, setPanning] = useState(false);
   const [draft, setDraft] = useState<number[] | null>(null); // pen stroke being drawn (world coords)
   const drawing = useRef(false);
   // marquee (drag-select box) and connector being dragged — refs hold the truth, state triggers redraw
@@ -85,16 +93,129 @@ export default function Canvas({ spaceDown }: { spaceDown: boolean }) {
   const onWheel = (e: Konva.KonvaEventObject<WheelEvent>) => {
     e.evt.preventDefault();
     const p = stageRef.current!.getPointerPosition()!;
-    if (e.evt.ctrlKey || e.evt.metaKey) {
-      zoomBy(Math.exp(-e.evt.deltaY * 0.01), p.x, p.y); // pinch / ctrl+wheel
-    } else {
-      zoomBy(e.evt.deltaY < 0 ? 1.1 : 1 / 1.1, p.x, p.y); // plain wheel zooms (Miro style)
-    }
+    const intent = wheelIntent(e.evt, wheelMode);
+    if (intent.kind === "zoom") wheelZoom(intent.factor, p.x, p.y);
+    else panNow(intent.dx, intent.dy);
   };
 
+  // Drag the view around. Listens on the window so it keeps working when the pointer leaves the canvas.
+  const startPan = (x: number, y: number) => {
+    stopMotion();
+    panRef.current = { x, y };
+    setPanning(true);
+    const move = (ev: MouseEvent | TouchEvent) => {
+      const pt = "touches" in ev ? ev.touches[0] : ev;
+      const last = panRef.current;
+      if (!pt || !last) return;
+      panNow(pt.clientX - last.x, pt.clientY - last.y);
+      panRef.current = { x: pt.clientX, y: pt.clientY };
+    };
+    const end = () => {
+      panRef.current = null;
+      setPanning(false);
+      window.removeEventListener("mousemove", move);
+      window.removeEventListener("mouseup", end);
+      window.removeEventListener("touchmove", move);
+      window.removeEventListener("touchend", end);
+      window.removeEventListener("touchcancel", end);
+    };
+    window.addEventListener("mousemove", move);
+    window.addEventListener("mouseup", end);
+    window.addEventListener("touchmove", move);
+    window.addEventListener("touchend", end);
+    window.addEventListener("touchcancel", end);
+  };
+
+  // Browser-level things that must be switched off on the board: page zoom with Ctrl+wheel, and two fingers
+  // pinching the whole page. Two fingers on the board zoom and move the board instead.
+  useEffect(() => {
+    const box = boxRef.current;
+    if (!box) return;
+    const noScroll = (e: WheelEvent) => e.preventDefault();
+    let last: { cx: number; cy: number; dist: number } | null = null;
+    const info = (t: TouchList) => {
+      const a = t[0], b = t[1];
+      return { cx: (a.clientX + b.clientX) / 2, cy: (a.clientY + b.clientY) / 2, dist: Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY) };
+    };
+    const start = (e: TouchEvent) => {
+      if (e.touches.length !== 2) return;
+      e.preventDefault();
+      last = info(e.touches);
+      // the first finger may have started something (a pen line, a selection box, a pan): drop it
+      stopMotion();
+      panRef.current = null;
+      drawing.current = false;
+      setDraft(null);
+      marqueeRef.current = null;
+      setMarquee(null);
+      linkRef.current = null;
+      setLink(null);
+    };
+    const move = (e: TouchEvent) => {
+      if (!last || e.touches.length !== 2) return;
+      e.preventDefault();
+      const now = info(e.touches);
+      const st = useBoard.getState();
+      st.setViewport(pinchStep(st.viewport, last, now));
+      last = now;
+    };
+    const end = (e: TouchEvent) => {
+      if (e.touches.length < 2) last = null;
+    };
+    box.addEventListener("wheel", noScroll, { passive: false });
+    box.addEventListener("touchstart", start, { passive: false });
+    box.addEventListener("touchmove", move, { passive: false });
+    box.addEventListener("touchend", end);
+    box.addEventListener("touchcancel", end);
+    return () => {
+      box.removeEventListener("wheel", noScroll);
+      box.removeEventListener("touchstart", start);
+      box.removeEventListener("touchmove", move);
+      box.removeEventListener("touchend", end);
+      box.removeEventListener("touchcancel", end);
+    };
+  }, []);
+
+  // Dragging a selection box or a connector close to the edge of the screen slides the board that way.
+  const dragging = !!marquee || !!link;
+  useEffect(() => {
+    if (!dragging) return;
+    let id = 0;
+    const tick = () => {
+      const p = stageRef.current?.getPointerPosition();
+      if (p) {
+        const dx = edgePanSpeed(p.x, window.innerWidth), dy = edgePanSpeed(p.y, window.innerHeight);
+        if (dx || dy) {
+          panNow(dx, dy);
+          const v = useBoard.getState().viewport;
+          const x = (p.x - v.x) / v.scale, y = (p.y - v.y) / v.scale;
+          if (marqueeRef.current) {
+            marqueeRef.current = { ...marqueeRef.current, x2: x, y2: y };
+            setMarquee(marqueeRef.current);
+          }
+          if (linkRef.current) {
+            linkRef.current = { ...linkRef.current, x2: x, y2: y };
+            setLink(linkRef.current);
+          }
+        }
+      }
+      id = requestAnimationFrame(tick);
+    };
+    id = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(id);
+  }, [dragging]);
+
   const onStageDown = (e: Konva.KonvaEventObject<MouseEvent | TouchEvent>) => {
-    if (spaceDown || editingId) return;
+    const touch = "touches" in e.evt;
+    if (touch && (e.evt as TouchEvent).touches.length > 1) return; // two fingers: the pinch code above handles it
     const onEmpty = e.target === e.target.getStage();
+    const mouse = e.evt as MouseEvent;
+    if ((!touch && (mouse.button === 1 || (mouse.button === 0 && panMode))) || (touch && onEmpty && (tool === "select" || panMode))) {
+      e.evt.preventDefault(); // (the middle button would otherwise start the browser's scroll circle)
+      const pt = touch ? (e.evt as TouchEvent).touches[0] : mouse;
+      return startPan(pt.clientX, pt.clientY);
+    }
+    if (panMode || editingId) return;
     const { x, y } = world();
 
     if (tool === "select") {
@@ -260,11 +381,12 @@ export default function Canvas({ spaceDown }: { spaceDown: boolean }) {
     updateObjects(patches);
   };
 
-  const cursor = spaceDown ? "grab" : tool === "select" ? "default" : tool === "pen" ? "crosshair" : "copy";
+  const cursor = panning ? "grabbing" : panMode ? "grab" : tool === "select" ? "default" : tool === "pen" ? "crosshair" : "copy";
 
   return (
     <div
-      style={{ cursor }}
+      ref={boxRef}
+      style={{ cursor, touchAction: "none" }}
       onDragOver={(e) => {
         if (canEdit && e.dataTransfer.types.includes("Files")) e.preventDefault();
       }}
@@ -283,10 +405,6 @@ export default function Canvas({ spaceDown }: { spaceDown: boolean }) {
         y={viewport.y}
         scaleX={viewport.scale}
         scaleY={viewport.scale}
-        draggable={spaceDown}
-        onDragEnd={(e) => {
-          if (e.target === e.target.getStage()) setViewport({ ...viewport, x: e.target.x(), y: e.target.y() });
-        }}
         onWheel={onWheel}
         onMouseDown={onStageDown}
         onTouchStart={onStageDown}
@@ -296,10 +414,10 @@ export default function Canvas({ spaceDown }: { spaceDown: boolean }) {
         onTouchEnd={onStageUp}
       >
         <Layer>
-          {objects.map((o) => (o.type === "frame" ? <ObjectNode key={o.id} obj={o} draggable={tool === "select" && !spaceDown && canEdit} /> : null))}
+          {objects.map((o) => (o.type === "frame" ? <ObjectNode key={o.id} obj={o} draggable={tool === "select" && !panMode && canEdit} /> : null))}
           {objects.map((o) => (o.type === "connector" ? <ConnectorNode key={o.id} conn={o} /> : null))}
           {objects.map((o) =>
-            o.type === "connector" || o.type === "frame" || isOverlay(o) ? null : <ObjectNode key={o.id} obj={o} draggable={tool === "select" && !spaceDown && canEdit} />,
+            o.type === "connector" || o.type === "frame" || isOverlay(o) ? null : <ObjectNode key={o.id} obj={o} draggable={tool === "select" && !panMode && canEdit} />,
           )}
           {marquee && (
             <Rect

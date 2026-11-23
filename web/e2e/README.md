@@ -20,3 +20,6 @@ Each line printed starts with PASS or FAIL. `e2e-solo` and `e2e-rt` expect the a
 
 ## e2e-stage13.cjs
 Look and feel (Stage 13): landing page, sign-in card (inline messages, show/hide password), floating bar above the selection, text sizes S/M/L/XL with undo, and a narrow window (Export PNG on one line, "Private" clear of the zoom bar). Needs `npm run dev`.
+
+## Stage 15 (moving around the board)
+    NODE_PATH=$(npm root -g) node e2e/e2e-nav.cjs        # wheel, trackpad, middle mouse, Hand tool, arrows, zoom keys/menu, minimap, edge scroll, pinch

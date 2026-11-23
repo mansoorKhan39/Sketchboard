@@ -12,6 +12,7 @@ const icon = (d: ReactNode) => (
 
 const TOOLS: { id: Tool; label: string; key: string; icon: ReactNode }[] = [
   { id: "select", label: "Select", key: "V", icon: icon(<path d="M5 3l14 8-6 2-2 6z" />) },
+  { id: "hand", label: "Hand (move the view)", key: "H", icon: icon(<path d="M8 13V5.5a1.5 1.5 0 013 0V11m0-6.5a1.5 1.5 0 013 0V11m0-4.5a1.5 1.5 0 013 0V13m0-3.5a1.5 1.5 0 013 0V16a6 6 0 01-6 6h-1.5a6 6 0 01-4.6-2.2L4 15.500a1.600 1.600 0 012.400-2.100L8 15" />) },
   { id: "sticky", label: "Sticky note", key: "N", icon: icon(<path d="M4 4h16v10l-6 6H4zM14 20v-6h6" />) },
   { id: "shape", label: "Shape", key: "S", icon: icon(<><rect x="3" y="11" width="9" height="9" rx="1" /><circle cx="16" cy="8" r="5" /></>) },
   { id: "pen", label: "Pen", key: "P", icon: icon(<path d="M4 20l4-1 11-11-3-3L5 16zM14 6l3 3" />) },
@@ -25,7 +26,7 @@ export default function Toolbar() {
   const tool = useBoard((s) => s.tool);
   const setTool = useBoard((s) => s.setTool);
   const canEdit = useBoard((s) => s.role !== "viewer");
-  const tools = canEdit ? TOOLS : TOOLS.filter((t) => t.id === "select");
+  const tools = canEdit ? TOOLS : TOOLS.filter((t) => t.id === "select" || t.id === "hand");
   const picker = useRef<HTMLInputElement>(null);
 
   return (

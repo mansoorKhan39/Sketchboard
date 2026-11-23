@@ -153,3 +153,9 @@ html.theme-anim, html.theme-anim *, html.theme-anim *::before, html.theme-anim *
 .field:hover { border-color: color-mix(in srgb, var(--muted) 45%, var(--line)); }
 .field:focus { border-color: #4f46e5; box-shadow: 0 0 0 3px rgb(79 70 229 / 0.18); }
 .field[aria-invalid="true"] { border-color: #ef4444; box-shadow: 0 0 0 3px rgb(239 68 68 / 0.14); }
+
+/* The board is not a page: nothing scrolls, the browser's back/forward swipe and pull-to-refresh stay out of the way */
+html,
+body {
+  overscroll-behavior: none;
+}

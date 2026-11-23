@@ -25,8 +25,15 @@ Infinite canvas (wheel = zoom, hold Space + drag = pan), sticky notes, shapes (r
 pen, text, connectors (L tool: drag from one object to another; straight/elbow, arrow on/off),
 marquee selection (drag on empty space), moving several objects together, select / move / resize / rotate, colours, duplicate, delete, copy/paste, undo/redo, fit to content.
 
+## Moving around the board
+- **Mouse wheel** zooms about the pointer (smoothly); **trackpad** two-finger swipe scrolls; **pinch** (trackpad or touch screen) zooms. Shift + wheel slides sideways. In the zoom menu, "Mouse wheel: Scrolls" makes a plain wheel scroll instead (Figma style).
+- **Pan**: hold Space and drag, press **H** (Hand tool) and drag, drag with the **middle mouse button**, or one finger on an empty spot on a touch screen. Dragging a selection box or connector to the edge of the screen slides the board.
+- **Keys**: Ctrl/Cmd + `+` / `-` zoom, Ctrl/Cmd + `0` = 100%, Shift+1 fit everything, Shift+2 zoom to selection. Arrow keys nudge the selected objects (Shift = 10 units); with nothing selected they move the view.
+- **Zoom menu** (click the %): presets, fit, selection, wheel behaviour, minimap on/off. The **minimap** (bottom right, wide windows) shows the whole board; click or drag on it to jump.
+- Code: `web/src/viewport.ts` (all the maths, tested), `navigation.ts` (smooth gliding), `components/Canvas.tsx` (pointer, wheel and touch handling), `components/Minimap.tsx`, `components/BottomBars.tsx` (zoom menu).
+
 ## Shortcuts
-V select · N sticky · S shape · P pen · T text · L connector · Space+drag pan · wheel zoom · Shift+1 fit ·
+V select · H hand · N sticky · S shape · P pen · T text · L connector · Space+drag pan · wheel zoom · Shift+1 fit ·
 Ctrl/Cmd+Z undo · Ctrl/Cmd+Shift+Z redo · Ctrl/Cmd+C/V/D copy/paste/duplicate · Delete remove · Double-click = edit text
 
 Live collaboration locally: make a free account at ably.com, copy an API key, and put it in `web/.env`:

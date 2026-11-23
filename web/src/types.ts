@@ -1,5 +1,5 @@
 // Object model — mirrors the Database Design document (shared fields + one shape per type).
-export type Tool = "select" | "sticky" | "shape" | "pen" | "text" | "connector" | "frame" | "comment";
+export type Tool = "select" | "sticky" | "shape" | "pen" | "text" | "connector" | "frame" | "comment" | "hand";
 export type ShapeKind = "rect" | "ellipse" | "diamond";
 
 interface Base {

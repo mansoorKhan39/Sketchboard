@@ -3,9 +3,12 @@ import { useBoard } from "./store";
 import type { Tool } from "./types";
 import { voterId } from "./extras";
 import { useAuth } from "./auth";
+import { isOverlay } from "./kinds";
 import { placeImages, viewCenter } from "./image";
+import { panNow, zoomStep, zoomToFit, zoomToScale, zoomToSelection } from "./navigation";
+import { arrowStep } from "./viewport";
 
-const KEY_TO_TOOL: Record<string, Tool> = { v: "select", n: "sticky", s: "shape", p: "pen", t: "text", l: "connector", f: "frame", c: "comment" };
+const KEY_TO_TOOL: Record<string, Tool> = { v: "select", h: "hand", n: "sticky", s: "shape", p: "pen", t: "text", l: "connector", f: "frame", c: "comment" };
 
 // Registers all keyboard shortcuts from the UI/UX document. Returns whether Space is held (for panning).
 export function useShortcuts() {
@@ -47,6 +50,30 @@ export function useShortcuts() {
       if (e.code === "Space") {
         e.preventDefault();
         setSpaceDown(true);
+      } else if (mod && (e.key === "=" || e.key === "+" || e.code === "NumpadAdd")) {
+        e.preventDefault(); // (also stops the browser zooming the whole page)
+        zoomStep(1.25);
+      } else if (mod && (e.key === "-" || e.code === "NumpadSubtract")) {
+        e.preventDefault();
+        zoomStep(1 / 1.25);
+      } else if (mod && (e.key === "0" || e.code === "Numpad0")) {
+        e.preventDefault();
+        zoomToScale(1);
+      } else if (e.shiftKey && !mod && e.code === "Digit2") {
+        zoomToSelection();
+      } else if (e.key.startsWith("Arrow") && !mod && !e.altKey) {
+        // arrows: nudge what is selected (1 unit, Shift = 10); with nothing selected they move the view
+        e.preventDefault();
+        const dx = e.key === "ArrowLeft" ? -1 : e.key === "ArrowRight" ? 1 : 0;
+        const dy = e.key === "ArrowUp" ? -1 : e.key === "ArrowDown" ? 1 : 0;
+        const picked = s.objects.filter((o) => s.selectedIds.includes(o.id) && o.type !== "connector" && !isOverlay(o));
+        if (picked.length && s.role !== "viewer") {
+          const step = arrowStep(e.shiftKey);
+          s.updateObjects(Object.fromEntries(picked.map((o) => [o.id, { x: o.x + dx * step, y: o.y + dy * step }])));
+        } else if (!picked.length) {
+          const step = e.shiftKey ? 240 : 60;
+          panNow(-dx * step, -dy * step);
+        }
       } else if (mod && k === "z") {
         e.preventDefault();
         e.shiftKey ? s.redo() : s.undo();
@@ -62,7 +89,7 @@ export function useShortcuts() {
       else if (e.key === "Escape") {
         s.select([]);
         s.setTool("select");
-      } else if (e.shiftKey && e.code === "Digit1") s.fitToContent(window.innerWidth, window.innerHeight);
+      } else if (e.shiftKey && e.code === "Digit1") zoomToFit();
       else if (!mod && KEY_TO_TOOL[k]) s.setTool(KEY_TO_TOOL[k]);
     };
 

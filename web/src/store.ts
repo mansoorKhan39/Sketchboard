@@ -72,7 +72,7 @@ interface BoardState {
   stopPresent: () => void;
 }
 
-const clampScale = (s: number) => Math.min(MAX_SCALE, Math.max(MIN_SCALE, s));
+const clampScale = (s: number) => Math.min(MAX_SCALE, Math.max(MIN_SCALE, s)); // (same rule as viewport.ts)
 const HISTORY_LIMIT = 100;
 
 // Every change that should be undoable goes through this helper:
@@ -245,7 +245,7 @@ export const useBoard = create<BoardState>((set, get) => ({
       .catch(() => set({ saveStatus: "error" }));
   },
 
-  setTool: (tool) => set((s) => (canEditNow(s) || tool === "select" ? { tool, editingId: null } : s)),
+  setTool: (tool) => set((s) => (canEditNow(s) || tool === "select" || tool === "hand" ? { tool, editingId: null } : s)),
   setViewport: (viewport) => set({ viewport }),
   zoomBy: (factor, cx, cy) =>
     set((s) => {

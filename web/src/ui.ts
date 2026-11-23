@@ -4,6 +4,18 @@ export type Theme = "light" | "dark";
 export type View = { name: "landing" } | { name: "dashboard" } | { name: "board"; id: string } | { name: "auth" } | { name: "shared"; token: string };
 
 const THEME_KEY = "sketchboard.theme";
+const NAV_KEY = "sketchboard.nav";
+
+// Two small personal settings for moving around the board, remembered in this browser.
+export type WheelMode = "zoom" | "scroll";
+function initialNav(): { wheelMode: WheelMode; minimap: boolean } {
+  try {
+    const n = JSON.parse(localStorage.getItem(NAV_KEY) ?? "{}");
+    return { wheelMode: n.wheelMode === "scroll" ? "scroll" : "zoom", minimap: n.minimap !== false };
+  } catch {
+    return { wheelMode: "zoom", minimap: true };
+  }
+}
 
 function initialTheme(): Theme {
   try {
@@ -33,12 +45,25 @@ interface UIState {
   toast: { id: number; text: string } | null;
   showToast: (text: string) => void;
   toggleTheme: () => void;
+  wheelMode: WheelMode; // what a mouse wheel does on the board
+  minimap: boolean; // show the small overview map
+  setWheelMode: (m: WheelMode) => void;
+  setMinimap: (on: boolean) => void;
   go: (v: View) => void;
 }
 
 export const useUI = create<UIState>((set, get) => ({
   theme: initialTheme(),
   view: viewFromHash(),
+  ...initialNav(),
+  setWheelMode: (wheelMode) => {
+    set({ wheelMode });
+    saveNav(get());
+  },
+  setMinimap: (minimap) => {
+    set({ minimap });
+    saveNav(get());
+  },
   toast: null,
   // a short message at the bottom of the screen ("Link copied")
   showToast: (text) => {
@@ -63,5 +88,13 @@ export const useUI = create<UIState>((set, get) => ({
     window.location.hash = v.name === "board" ? `#/board/${v.id}` : v.name === "auth" ? "#/login" : v.name === "landing" ? "" : "#/";
   },
 }));
+
+function saveNav(s: { wheelMode: WheelMode; minimap: boolean }) {
+  try {
+    localStorage.setItem(NAV_KEY, JSON.stringify({ wheelMode: s.wheelMode, minimap: s.minimap }));
+  } catch {
+    /* ignore */
+  }
+}
 
 window.addEventListener("hashchange", () => useUI.setState({ view: viewFromHash() }));
