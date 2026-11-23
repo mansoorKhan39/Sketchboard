@@ -1,7 +1,15 @@
 import { create } from "zustand";
 
 export type Theme = "light" | "dark";
-export type View = { name: "landing" } | { name: "dashboard" } | { name: "board"; id: string } | { name: "auth" } | { name: "shared"; token: string };
+export type View =
+  | { name: "landing" }
+  | { name: "dashboard" }
+  | { name: "board"; id: string }
+  | { name: "auth" }
+  | { name: "shared"; token: string }
+  | { name: "forgot" }
+  | { name: "reset"; token: string }
+  | { name: "profile" };
 
 const THEME_KEY = "sketchboard.theme";
 const NAV_KEY = "sketchboard.nav";
@@ -35,6 +43,10 @@ export function viewFromHash(): View {
   const sh = window.location.hash.match(/^#\/s\/([\w-]+)/);
   if (sh) return { name: "shared", token: sh[1] };
   if (window.location.hash.startsWith("#/login")) return { name: "auth" };
+  const rs = window.location.hash.match(/^#\/reset\/([\w-]+)/);
+  if (rs) return { name: "reset", token: rs[1] };
+  if (window.location.hash.startsWith("#/forgot")) return { name: "forgot" };
+  if (window.location.hash.startsWith("#/profile")) return { name: "profile" };
   // an address with no hash at all is the front door; "#/" is the dashboard
   return window.location.hash === "" || window.location.hash === "#" ? { name: "landing" } : { name: "dashboard" };
 }
@@ -85,7 +97,8 @@ export const useUI = create<UIState>((set, get) => ({
     set({ theme });
   },
   go: (v) => {
-    window.location.hash = v.name === "board" ? `#/board/${v.id}` : v.name === "auth" ? "#/login" : v.name === "landing" ? "" : "#/";
+    window.location.hash =
+      v.name === "board" ? `#/board/${v.id}` : v.name === "auth" ? "#/login" : v.name === "forgot" ? "#/forgot" : v.name === "profile" ? "#/profile" : v.name === "reset" ? `#/reset/${v.token}` : v.name === "landing" ? "" : "#/";
   },
 }));
 

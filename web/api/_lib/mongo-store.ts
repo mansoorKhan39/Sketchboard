@@ -33,6 +33,7 @@ export function createMongoStore(uri: string, dbName: string): Store {
       // creating an index that already exists does nothing, so this is safe on every cold start
       indexes ??= Promise.all([
         users.createIndex({ email: 1 }, { unique: true }),
+        users.createIndex({ resetHash: 1 }, { sparse: true }),
         boards.createIndex({ ownerId: 1, updatedAt: -1 }),
         boards.createIndex({ "share.token": 1 }, { sparse: true }),
       ]);
@@ -66,6 +67,28 @@ export function createMongoStore(uri: string, dbName: string): Store {
       const { users } = await cols();
       const d = await users.findOne({ _id: id });
       return d ? toUser(d) : null;
+    },
+    async findUserByResetHash(hash) {
+      const { users } = await cols();
+      const d = await users.findOne({ resetHash: hash });
+      return d ? toUser(d) : null;
+    },
+    async updateUser(id, patch) {
+      const { users } = await cols();
+      const $set: Record<string, unknown> = {};
+      const $unset: Record<string, ""> = {};
+      for (const [k, v] of Object.entries(patch)) (v === undefined ? ($unset[k] = "") : ($set[k] = v));
+      const update: Record<string, unknown> = {};
+      if (Object.keys($set).length) update.$set = $set;
+      if (Object.keys($unset).length) update.$unset = $unset;
+      if (Object.keys(update).length) await users.updateOne({ _id: id }, update);
+    },
+    async deleteUser(id) {
+      const { users, boards, versions } = await cols();
+      const ids = (await boards.find({ ownerId: id }, { projection: { _id: 1 } }).toArray()).map((b) => b._id);
+      if (ids.length) await versions.deleteMany({ _id: { $in: ids } });
+      await boards.deleteMany({ ownerId: id });
+      await users.deleteOne({ _id: id });
     },
     async listBoards(ownerId) {
       const { boards } = await cols();

@@ -7,6 +7,13 @@ export interface User {
   id: string;
   name: string;
   email: string;
+  avatar?: string; // picture address (from Google)
+  hasPassword: boolean; // false for an account that only signs in with Google
+  google: boolean; // linked to a Google account
+}
+export interface AuthConfig {
+  google: string | null; // Google client id when "Continue with Google" is available
+  resetEmail: boolean; // true when "Forgot password" can send e-mail
 }
 export interface CloudBoard {
   id: string;
@@ -69,6 +76,13 @@ export const api = {
   register: (name: string, email: string, password: string) => call<{ user: User }>("POST", "/auth/register", { name, email, password }),
   login: (email: string, password: string) => call<{ user: User }>("POST", "/auth/login", { email, password }),
   logout: () => call<void>("POST", "/auth/logout"),
+  authConfig: () => call<AuthConfig>("GET", "/auth/config"),
+  google: (credential: string) => call<{ user: User }>("POST", "/auth/google", { credential }),
+  forgot: (email: string) => call<{ ok: true }>("POST", "/auth/forgot", { email }),
+  reset: (token: string, password: string) => call<{ user: User }>("POST", "/auth/reset", { token, password }),
+  updateProfile: (name: string) => call<{ user: User }>("PATCH", "/auth/me", { name }),
+  changePassword: (current: string | undefined, password: string) => call<{ user: User }>("POST", "/auth/password", { current, password }),
+  deleteAccount: (confirm: string) => call<void>("DELETE", "/auth/me", { confirm }),
   listBoards: () => call<{ boards: CloudBoard[] }>("GET", "/boards"),
   getBoard: (id: string) => call<{ board: CloudBoard }>("GET", `/boards/${id}`),
   createBoard: (name: string, objects: BoardObject[]) => call<{ board: CloudBoard }>("POST", "/boards", { name, objects }),

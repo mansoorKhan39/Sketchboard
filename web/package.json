@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@ably/pubsub-device": "^3.2.0",
+    "jose": "^6.2.18",
     "konva": "^10.9.1",
     "mongodb": "^7.9.0",
     "nanoid": "^6.0.2",

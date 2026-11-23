@@ -8,6 +8,9 @@ interface AuthState {
   login: (email: string, password: string) => Promise<void>;
   register: (name: string, email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
+  google: (credential: string) => Promise<void>;
+  setUser: (u: User) => void; // after the profile or reset screens change something
+  signedOut: () => void; // after the account was deleted
 }
 
 export const useAuth = create<AuthState>((set) => ({
@@ -23,6 +26,9 @@ export const useAuth = create<AuthState>((set) => ({
   },
   login: async (email, password) => set({ user: (await api.login(email, password)).user }),
   register: async (name, email, password) => set({ user: (await api.register(name, email, password)).user }),
+  google: async (credential) => set({ user: (await api.google(credential)).user }),
+  setUser: (user) => set({ user }),
+  signedOut: () => set({ user: null }),
   logout: async () => {
     try {
       await api.logout();

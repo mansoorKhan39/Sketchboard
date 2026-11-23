@@ -2,6 +2,8 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { join } from "node:path";
 import { createApi } from "./core.js";
 import { FileStore, type Store } from "./store.js";
+import { createGoogleVerifier } from "./google.js";
+import { consoleMailer, createBrevoMailer } from "./mail.js";
 import type { ApiRequest } from "./types.js";
 
 // Connects the framework-free API to a plain Node request. Used by the dev server (vite.config.ts).
@@ -39,6 +41,11 @@ export function createNodeHandler(store?: Store) {
     secret: process.env.SESSION_SECRET ?? "dev-only-secret-change-me",
     // live collaboration needs an Ably key (ABLY_API_KEY); without it boards work alone
     ablyKey: process.env.ABLY_API_KEY,
+    googleClientId: process.env.GOOGLE_CLIENT_ID,
+    verifyGoogle: process.env.GOOGLE_CLIENT_ID ? createGoogleVerifier(process.env.GOOGLE_CLIENT_ID) : undefined,
+    // development: reset e-mails are printed in the terminal unless a Brevo key is set
+    sendMail: process.env.BREVO_API_KEY && process.env.MAIL_FROM ? createBrevoMailer(process.env.BREVO_API_KEY, process.env.MAIL_FROM) : consoleMailer,
+    appUrl: process.env.APP_URL ?? "http://localhost:5173",
   });
 
   return async (req: IncomingMessage, res: ServerResponse) => {

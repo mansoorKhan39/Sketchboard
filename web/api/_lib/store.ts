@@ -9,6 +9,11 @@ export interface Store {
   createUser(user: UserRec): Promise<boolean>;
   findUserByEmail(email: string): Promise<UserRec | null>;
   findUserById(id: string): Promise<UserRec | null>;
+  findUserByResetHash(hash: string): Promise<UserRec | null>;
+  /** Changes some fields; a value of `undefined` removes the field. */
+  updateUser(id: string, patch: Partial<Omit<UserRec, "id">>): Promise<void>;
+  /** Removes the person and everything they own (boards and their saved versions). */
+  deleteUser(id: string): Promise<void>;
   listBoards(ownerId: string): Promise<BoardRec[]>;
   getBoard(id: string): Promise<BoardRec | null>;
   findBoardByShareToken(token: string): Promise<BoardRec | null>;
@@ -39,6 +44,23 @@ export class MemoryStore implements Store {
   }
   async findUserById(id: string) {
     return this.users.find((u) => u.id === id) ?? null;
+  }
+  async findUserByResetHash(hash: string) {
+    return this.users.find((u) => u.resetHash === hash) ?? null;
+  }
+  async updateUser(id: string, patch: Partial<Omit<UserRec, "id">>) {
+    const i = this.users.findIndex((u) => u.id === id);
+    if (i < 0) return;
+    const next: Record<string, unknown> = { ...this.users[i], ...patch };
+    for (const k of Object.keys(next)) if (next[k] === undefined) delete next[k];
+    this.users[i] = next as unknown as UserRec;
+    this.changed();
+  }
+  async deleteUser(id: string) {
+    for (const b of this.boards.filter((b) => b.ownerId === id)) delete this.versions[b.id];
+    this.boards = this.boards.filter((b) => b.ownerId !== id);
+    this.users = this.users.filter((u) => u.id !== id);
+    this.changed();
   }
   async listBoards(ownerId: string) {
     return this.boards.filter((b) => b.ownerId === ownerId).sort((a, b) => b.updatedAt - a.updatedAt);

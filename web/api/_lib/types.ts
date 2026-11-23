@@ -4,7 +4,12 @@ export interface UserRec {
   id: string;
   email: string; // always lower-case
   name: string;
-  passwordHash: string; // "scrypt$<salt>$<hash>"
+  passwordHash: string | null; // "scrypt$<salt>$<hash>"; null for an account that only signs in with Google
+  googleId?: string; // Google's id for this person, set the first time they sign in with Google
+  avatar?: string; // picture address (from Google)
+  resetHash?: string; // sha-256 of the password-reset link's secret (the secret itself is only in the e-mail)
+  resetExp?: number; // when that link stops working
+  resetSentAt?: number; // when the last one was sent (so nobody can use us to flood an inbox)
   createdAt: number;
 }
 

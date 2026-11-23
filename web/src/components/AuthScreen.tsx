@@ -4,6 +4,7 @@ import { useUI } from "../ui";
 import { ApiError } from "../api";
 import Logo from "./Logo";
 import ThemeToggle from "./ThemeToggle";
+import GoogleButton, { useAuthConfig } from "./GoogleButton";
 
 type Errors = { name?: string; email?: string; password?: string };
 
@@ -25,6 +26,7 @@ export default function AuthScreen() {
   const [error, setError] = useState("");
   const [fieldErrors, setFieldErrors] = useState<Errors>({});
   const [busy, setBusy] = useState(false);
+  const config = useAuthConfig();
 
   // Quick checks in the browser, so people see what to fix without waiting for the server.
   const check = (): Errors => {
@@ -49,6 +51,19 @@ export default function AuthScreen() {
       go({ name: "dashboard" });
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Something went wrong. Try again.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const withGoogle = async (credential: string) => {
+    setError("");
+    setBusy(true);
+    try {
+      await useAuth.getState().google(credential);
+      go({ name: "dashboard" });
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Google sign-in failed. Try again.");
     } finally {
       setBusy(false);
     }
@@ -83,7 +98,18 @@ export default function AuthScreen() {
             </p>
           </div>
 
-          <form onSubmit={submit} className="mt-7 space-y-4" noValidate>
+          {config?.google && (
+            <div className="mt-7">
+              <GoogleButton onCredential={(c) => void withGoogle(c)} text={mode === "login" ? "signin_with" : "signup_with"} />
+              <div className="mt-5 flex items-center gap-3 text-xs text-muted" aria-hidden>
+                <span className="h-px flex-1 bg-line" />
+                or use email
+                <span className="h-px flex-1 bg-line" />
+              </div>
+            </div>
+          )}
+
+          <form onSubmit={submit} className={`${config?.google ? "mt-5" : "mt-7"} space-y-4`} noValidate>
             {mode === "register" && (
               <label className="block text-sm font-medium">
                 Name
@@ -137,6 +163,13 @@ export default function AuthScreen() {
               </div>
               {fieldErrors.password ? msg(fieldErrors.password) : mode === "register" && <span className="mt-1.5 block text-xs font-normal text-muted">At least 8 characters.</span>}
             </label>
+            {mode === "login" && config?.resetEmail && (
+              <div className="-mt-2 text-right">
+                <button type="button" className="text-xs font-medium text-brand hover:underline" onClick={() => go({ name: "forgot" })} data-testid="auth-forgot">
+                  Forgot password?
+                </button>
+              </div>
+            )}
 
             {error && (
               <p role="alert" data-testid="auth-error" className="fade-in rounded-lg border border-red-500/20 bg-red-500/10 px-3 py-2 text-sm text-red-500">

@@ -4,6 +4,9 @@ import type { Store } from "./store.js";
 import type { ApiRequest, ApiResponse, BoardRec, UserRec, Viewport } from "./types.js";
 import { addVersion } from "./versions.js";
 import { SESSION_DAYS, createAblyToken, createToken, hashPassword, readToken, verifyPassword } from "./security.js";
+import { createHash, randomBytes } from "node:crypto";
+import type { GoogleProfile } from "./google.js";
+import type { SendMail } from "./mail.js";
 
 export const COOKIE = "sb_session";
 const MAX_BOARD_BYTES = 3_000_000; // Vercel allows 4.5 MB per request; stay below it
@@ -23,6 +26,13 @@ const RegisterBody = z.object({
   email: Email,
   password: z.string("Enter a password").min(8, "Use at least 8 characters").max(128),
 });
+const Password = z.string("Enter a password").min(8, "Use at least 8 characters").max(128);
+const GoogleBody = z.object({ credential: z.string().min(20).max(4000) });
+const ForgotBody = z.object({ email: Email });
+const ResetBody = z.object({ token: z.string().min(20).max(200), password: Password });
+const ProfileBody = z.object({ name: z.string("Enter your name").trim().min(1, "Enter your name").max(60) });
+const PasswordBody = z.object({ current: z.string().max(128).optional(), password: Password });
+const DeleteBody = z.object({ confirm: z.string().max(254) });
 const LoginBody = z.object({ email: Email, password: z.string("Enter your password").min(1, "Enter your password").max(128) });
 
 const BoardObject = z.looseObject({
@@ -56,7 +66,11 @@ function parse<T>(schema: z.ZodType<T>, body: unknown, plain = false): T {
 }
 
 // ---------- shaping what we send back ----------
-const publicUser = (u: UserRec) => ({ id: u.id, name: u.name, email: u.email });
+const publicUser = (u: UserRec) => ({
+  id: u.id, name: u.name, email: u.email, avatar: u.avatar,
+  hasPassword: !!u.passwordHash, // false for an account that only uses Google
+  google: !!u.googleId,
+});
 const publicBoard = (b: BoardRec) => ({
   id: b.id, name: b.name, objects: b.objects, viewport: b.viewport, createdAt: b.createdAt, updatedAt: b.updatedAt,
 });
@@ -65,7 +79,18 @@ export interface ApiConfig {
   secret: string;
   // Live collaboration through Ably. When missing, boards still work alone; share/join endpoints answer "not set up".
   ablyKey?: string; // "<appId>.<keyId>:<secret>" from the Ably dashboard
+  // "Continue with Google". Needs the client id (public) and a function that checks Google's signed token.
+  googleClientId?: string;
+  verifyGoogle?: (credential: string) => Promise<GoogleProfile>;
+  // Password reset by e-mail. Needs a way to send mail and the web address to put in the link.
+  sendMail?: SendMail;
+  appUrl?: string; // e.g. https://sketchboard-ruby.vercel.app (no slash at the end)
 }
+
+const RESET_MINUTES = 30;
+const sha256 = (s: string) => createHash("sha256").update(s).digest("hex");
+// only a plain https picture address is kept (it is shown in <img>, never run)
+const safeAvatar = (u?: string) => (u && /^https:\/\/[^\s"'<>]{4,480}$/.test(u) ? u : undefined);
 
 export function createApi(store: Store, config: ApiConfig) {
   const json = (status: number, body: unknown, headers?: ApiResponse["headers"]): ApiResponse => ({ status, body, headers });
@@ -132,7 +157,9 @@ export function createApi(store: Store, config: ApiConfig) {
         const body = parse(LoginBody, req.body, true);
         const user = await store.findUserByEmail(body.email);
         dummyHash ??= hashPassword("not-a-real-password");
-        const ok = await verifyPassword(body.password, user ? user.passwordHash : await dummyHash);
+        const ok = await verifyPassword(body.password, user?.passwordHash ?? (await dummyHash));
+        if (user && !user.passwordHash)
+          throw fail(401, "use_google", "This account signs in with Google. Use the Google button, or choose “Forgot password” to add a password.");
         if (!user || !ok) throw fail(401, "bad_credentials", "Wrong email or password.");
         return json(200, { user: publicUser(user) }, { "Set-Cookie": sessionCookie(createToken(user.id, config.secret), req.secure) });
       }
@@ -142,6 +169,97 @@ export function createApi(store: Store, config: ApiConfig) {
       if (seg[1] === "me" && method === "GET") {
         const user = await requireUser(req);
         return json(200, { user: publicUser(user) });
+      }
+
+      // what the sign-in screen may offer (the Google client id is public by design)
+      if (seg[1] === "config" && method === "GET") {
+        return json(200, { google: config.verifyGoogle ? (config.googleClientId ?? null) : null, resetEmail: !!(config.sendMail && config.appUrl) });
+      }
+
+      if (seg[1] === "google" && method === "POST") {
+        if (!config.verifyGoogle) throw fail(503, "google_not_configured", "Google sign-in is not set up on this server yet.");
+        const { credential } = parse(GoogleBody, req.body, true);
+        let g: GoogleProfile;
+        try {
+          g = await config.verifyGoogle(credential);
+        } catch {
+          throw fail(401, "bad_google_token", "Google sign-in failed. Please try again.");
+        }
+        const email = g.email.trim().toLowerCase();
+        if (!g.emailVerified || !email) throw fail(401, "unverified", "Your Google e-mail address is not verified.");
+        let user = await store.findUserByEmail(email);
+        if (user) {
+          // same e-mail as an existing account: Google has confirmed it is the same person, so link them
+          if (user.googleId && user.googleId !== g.sub) throw fail(401, "bad_google_token", "Google sign-in failed. Please try again.");
+          const patch: Partial<UserRec> = {};
+          if (!user.googleId) patch.googleId = g.sub;
+          if (!user.avatar && safeAvatar(g.picture)) patch.avatar = safeAvatar(g.picture);
+          if (Object.keys(patch).length) {
+            await store.updateUser(user.id, patch);
+            user = { ...user, ...patch };
+          }
+        } else {
+          user = {
+            id: nanoid(12), email, name: (g.name.trim() || email.split("@")[0]).slice(0, 60), passwordHash: null,
+            googleId: g.sub, avatar: safeAvatar(g.picture), createdAt: Date.now(),
+          };
+          if (!(await store.createUser(user))) throw fail(409, "email_taken", "An account with this email already exists.");
+        }
+        return json(200, { user: publicUser(user) }, { "Set-Cookie": sessionCookie(createToken(user.id, config.secret), req.secure) });
+      }
+
+      // Forgot password. The answer is always the same, so nobody can use this to find out who has an account.
+      if (seg[1] === "forgot" && method === "POST") {
+        if (!config.sendMail || !config.appUrl) throw fail(503, "mail_not_configured", "Password reset by e-mail is not set up on this server yet.");
+        const { email } = parse(ForgotBody, req.body, true);
+        const user = await store.findUserByEmail(email);
+        const now = Date.now();
+        if (user && !(user.resetSentAt && now - user.resetSentAt < 60_000)) {
+          const secret = randomBytes(32).toString("base64url");
+          await store.updateUser(user.id, { resetHash: sha256(secret), resetExp: now + RESET_MINUTES * 60_000, resetSentAt: now });
+          try {
+            await config.sendMail({
+              to: user.email,
+              subject: "Reset your Sketchboard password",
+              text: `Hi ${user.name},\n\nSomeone (hopefully you) asked to reset your Sketchboard password.\nOpen this link within ${RESET_MINUTES} minutes to choose a new one:\n\n${config.appUrl}/#/reset/${secret}\n\nIf you did not ask for this, you can ignore this e-mail. Your password stays the same.`,
+            });
+          } catch {
+            /* the person sees the same answer either way; the server log has the details */
+            console.error("could not send the password reset e-mail");
+          }
+        }
+        return json(200, { ok: true });
+      }
+
+      if (seg[1] === "reset" && method === "POST") {
+        const { token, password } = parse(ResetBody, req.body, true);
+        const user = await store.findUserByResetHash(sha256(token));
+        if (!user || !user.resetExp || user.resetExp < Date.now()) throw fail(400, "bad_reset", "This reset link is not valid any more. Ask for a new one.");
+        await store.updateUser(user.id, { passwordHash: await hashPassword(password), resetHash: undefined, resetExp: undefined });
+        return json(200, { user: publicUser(user) }, { "Set-Cookie": sessionCookie(createToken(user.id, config.secret), req.secure) });
+      }
+
+      // ----- the signed-in person's own account -----
+      if (seg[1] === "me" && method === "PATCH") {
+        const user = await requireUser(req);
+        const { name } = parse(ProfileBody, req.body, true);
+        await store.updateUser(user.id, { name });
+        return json(200, { user: publicUser({ ...user, name }) });
+      }
+      if (seg[1] === "password" && method === "POST") {
+        const user = await requireUser(req);
+        const { current, password } = parse(PasswordBody, req.body, true);
+        // someone who already has a password must prove they know it; a Google-only account is setting its first one
+        if (user.passwordHash && !(await verifyPassword(current ?? "", user.passwordHash))) throw fail(400, "wrong_password", "Your current password is not correct.");
+        await store.updateUser(user.id, { passwordHash: await hashPassword(password) });
+        return json(200, { user: publicUser({ ...user, passwordHash: "set" }) });
+      }
+      if (seg[1] === "me" && method === "DELETE") {
+        const user = await requireUser(req);
+        const { confirm } = parse(DeleteBody, req.body, true);
+        if (confirm.trim().toLowerCase() !== user.email) throw fail(400, "confirm_mismatch", "Type your e-mail address exactly to confirm.");
+        await store.deleteUser(user.id);
+        return { status: 204, headers: { "Set-Cookie": clearCookie(req.secure) } };
       }
     }
 

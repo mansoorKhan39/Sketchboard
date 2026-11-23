@@ -32,9 +32,37 @@ If the top bar never says Live, the board still works alone (it just saves norma
 
 Old setup: earlier versions used a Cloudflare Worker (`realtime/`, `REALTIME_URL`, `REALTIME_SECRET`, `API_BASE`). None of that is needed any more. You can delete the Worker in the Cloudflare dashboard and remove those three variables from Vercel.
 
+## 4. Google sign-in (optional)
+"Continue with Google" on the sign-in screen. Free; no card.
+1. Go to console.cloud.google.com and create a project (any name).
+2. **APIs & Services → OAuth consent screen**: choose **External**, fill the app name (Sketchboard) and your e-mail, save. Then press **Publish app** so that everybody (not only test users) can sign in. Only the basic scopes (name, e-mail, picture) are used, so Google does not ask for a review.
+3. **APIs & Services → Credentials → Create credentials → OAuth client ID** → type **Web application**.
+   - **Authorized JavaScript origins**: add `https://sketchboard-ruby.vercel.app` (your own address) and, for local testing, `http://localhost:5173`.
+   - Leave **redirect URIs** empty (this sign-in does not use them).
+4. Copy the **Client ID** (it ends with `.apps.googleusercontent.com`). It is not a secret.
+5. In Vercel add `GOOGLE_CLIENT_ID` = that Client ID, then **Redeploy**.
+6. Open the sign-in screen: a Google button should appear above the e-mail form. If you already had an account with the same e-mail, Google links to it (same boards).
+
+How it stays safe: the server checks Google's signature on every sign-in and that the token was made for *your* client id, and refuses unverified e-mail addresses.
+
+## 5. Password reset by e-mail (optional)
+Sketchboard sends the reset link through **Brevo** (free: 300 e-mails a day, no domain needed).
+1. Create a free account at brevo.com.
+2. **Senders & IP → Senders → Add a sender**: use your own e-mail address; Brevo sends you a link to verify it.
+3. **SMTP & API → API keys → Generate a new API key**. Copy it.
+4. In Vercel add, then **Redeploy**:
+   - `BREVO_API_KEY` = the key
+   - `MAIL_FROM` = the verified sender, e.g. `Sketchboard <you@gmail.com>`
+   - `APP_URL` = your site address, e.g. `https://sketchboard-ruby.vercel.app` (no slash at the end). If you skip it, Vercel's own production address is used.
+5. On the sign-in screen "Forgot password?" now appears. Try it with your own e-mail (check the spam folder the first time: mail from a free Gmail sender can land there).
+
+Without these variables the "Forgot password?" link is hidden and the rest of the app works as before. Reset links work once and stop working after 30 minutes. Only a hash of the link's secret is stored.
+
 ## If something fails
 - Page loads but sign-up shows "The server is missing MONGODB_URI or SESSION_SECRET": the variables are not set (add them, then **Redeploy** — variables only apply to new deployments).
 - "Something went wrong on our side": open Vercel → Project → **Logs**. A message like *MongoServerSelectionError* means Atlas is blocking Vercel (re-check step 1.3) or the password in the URI is wrong.
+- "Google sign-in failed" right after pressing the button: `GOOGLE_CLIENT_ID` on Vercel does not match the Client ID the button was made with, or your site address is not in the **Authorized JavaScript origins** (step 4.3). The button itself says "origin is not allowed" in that case.
+- No reset e-mail arrives: in Brevo check **Transactional → Logs**; the sender must be verified. A wrong `BREVO_API_KEY` shows in Vercel → Logs as "could not send the password reset e-mail".
 - For speed, set Vercel's function region (Settings → Functions) near your Atlas cluster region.
 
 ## Free-tier limits to remember

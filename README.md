@@ -25,6 +25,12 @@ Infinite canvas (wheel = zoom, hold Space + drag = pan), sticky notes, shapes (r
 pen, text, connectors (L tool: drag from one object to another; straight/elbow, arrow on/off),
 marquee selection (drag on empty space), moving several objects together, select / move / resize / rotate, colours, duplicate, delete, copy/paste, undo/redo, fit to content.
 
+## Accounts
+- Sign in with **email and password** or **Google** (`POST /auth/google`: the server checks Google's signature, issuer and that the token was made for our client id; an existing account with the same verified e-mail is linked). A Google-only account has no password until it adds one.
+- **Forgot password**: `POST /auth/forgot` always answers the same (no way to find out who has an account), mails a one-time link (only its hash is stored, 30 minutes, one mail a minute); `POST /auth/reset` sets the password and signs the person in.
+- **Profile page** (`#/profile`): change name, change or add a password, see how you sign in, delete the account (type your e-mail; removes your boards too).
+- Code: `web/api/_lib/core.ts` (routes), `google.ts` (token check), `mail.ts` (Brevo / terminal), `web/src/components/` `GoogleButton`, `ForgotScreen`, `ResetScreen`, `ProfileScreen`, `AuthShell`, `Avatar`. Development: reset e-mails are printed in the terminal, and the Google button appears when `GOOGLE_CLIENT_ID` is set in `web/.env`.
+
 ## Moving around the board
 - **Mouse wheel** zooms about the pointer (smoothly); **trackpad** two-finger swipe scrolls; **pinch** (trackpad or touch screen) zooms. Shift + wheel slides sideways. In the zoom menu, "Mouse wheel: Scrolls" makes a plain wheel scroll instead (Figma style).
 - **Pan**: hold Space and drag, press **H** (Hand tool) and drag, drag with the **middle mouse button**, or one finger on an empty spot on a touch screen. Dragging a selection box or connector to the edge of the screen slides the board.

@@ -11,6 +11,9 @@ import Presenter from "./components/Presenter";
 import PeerCursors from "./components/PeerCursors";
 import Dashboard from "./components/Dashboard";
 import AuthScreen from "./components/AuthScreen";
+import ForgotScreen from "./components/ForgotScreen";
+import ResetScreen from "./components/ResetScreen";
+import ProfileScreen from "./components/ProfileScreen";
 import Logo from "./components/Logo";
 import { useAuth } from "./auth";
 import { useShortcuts } from "./useShortcuts";
@@ -116,6 +119,9 @@ export default function App() {
       </div>
     );
   if (view.name === "auth") return <AuthScreen />;
+  if (view.name === "forgot") return <ForgotScreen />;
+  if (view.name === "reset") return <ResetScreen token={view.token} />;
+  if (view.name === "profile") return userId ? <ProfileScreen /> : <AuthScreen />;
   if (sharedToken) {
     if (sharedError) return <Message title="Cannot open this board" text={sharedError} />;
     if (mode === "shared" && useBoard.getState().sharedToken === sharedToken) {
