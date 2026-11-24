@@ -48,7 +48,9 @@ function ZoomMenu({ scale }: { scale: number }) {
   const hasSelection = useBoard((s) => s.selectedIds.length > 0);
   const wheelMode = useUI((s) => s.wheelMode);
   const minimap = useUI((s) => s.minimap);
-  const { setWheelMode, setMinimap } = useUI.getState();
+  const snap = useUI((s) => s.snap);
+  const grid = useUI((s) => s.grid);
+  const { setWheelMode, setMinimap, setSnap, setGrid } = useUI.getState();
 
   useEffect(() => {
     if (!open) return;
@@ -100,6 +102,14 @@ function ZoomMenu({ scale }: { scale: number }) {
             <button className={seg(wheelMode === "zoom")} aria-pressed={wheelMode === "zoom"} data-testid="wheel-zoom" onClick={() => setWheelMode("zoom")}>Zooms</button>
             <button className={seg(wheelMode === "scroll")} aria-pressed={wheelMode === "scroll"} data-testid="wheel-scroll" onClick={() => setWheelMode("scroll")}>Scrolls</button>
           </div>
+          <label className={`${item} cursor-pointer`}>
+            Snap to other objects
+            <input type="checkbox" checked={snap} data-testid="snap-toggle" onChange={(e) => setSnap(e.target.checked)} className="h-4 w-4 accent-[#4F46E5]" />
+          </label>
+          <label className={`${item} cursor-pointer`}>
+            Snap to grid
+            <input type="checkbox" checked={grid} data-testid="grid-toggle" onChange={(e) => setGrid(e.target.checked)} className="h-4 w-4 accent-[#4F46E5]" />
+          </label>
           <label className={`${item} cursor-pointer`}>
             Show minimap
             <input type="checkbox" checked={minimap} data-testid="minimap-toggle" onChange={(e) => setMinimap(e.target.checked)} className="h-4 w-4 accent-[#4F46E5]" />

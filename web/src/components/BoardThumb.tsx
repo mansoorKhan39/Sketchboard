@@ -1,3 +1,4 @@
+import { polygonPoints } from "../shapes";
 import { isOverlay } from "../kinds";
 import type { BoardObject, Placeable } from "../types";
 import { INK_DEFAULT } from "../constants";
@@ -46,10 +47,10 @@ export default function BoardThumb({ objects }: { objects: BoardObject[] }) {
           const common = { fill: o.fill, stroke: "currentColor", strokeWidth: sw, opacity: 0.95 };
           if (o.kind === "ellipse")
             return <ellipse key={o.id} cx={o.x + o.width / 2} cy={o.y + o.height / 2} rx={o.width / 2} ry={o.height / 2} {...common} />;
-          if (o.kind === "diamond") {
-            const { x, y, width: w, height: h } = o;
-            return <polygon key={o.id} points={`${x + w / 2},${y} ${x + w},${y + h / 2} ${x + w / 2},${y + h} ${x},${y + h / 2}`} {...common} />;
-          }
+          const poly = polygonPoints(o.kind, o.width, o.height);
+          if (poly) return <polygon key={o.id} points={poly.map((v, i) => v + (i % 2 ? o.y : o.x)).join(" ")} {...common} />;
+          if (o.kind === "cloud" || o.kind === "speech")
+            return <ellipse key={o.id} cx={o.x + o.width / 2} cy={o.y + o.height / 2} rx={o.width / 2} ry={o.height / 2} {...common} />;
           return <rect key={o.id} x={o.x} y={o.y} width={o.width} height={o.height} rx={8} {...common} />;
         }
         if (o.type === "stroke") {

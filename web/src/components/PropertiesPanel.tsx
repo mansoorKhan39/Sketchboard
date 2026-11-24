@@ -1,6 +1,9 @@
 import { VoteButtons } from "./Extras";
 import { voterId } from "../extras";
 import { useAuth } from "../auth";
+import { useState } from "react";
+import { SHAPE_KINDS } from "../shapes";
+import type { AlignMode } from "../arrange";
 import { useBoard } from "../store";
 import { INK_COLORS, SHAPE_FILLS, STICKY_COLORS } from "../constants";
 import { lastShapeKind } from "./Canvas";
@@ -54,6 +57,53 @@ function Segment<T extends string>({ options, value, onPick }: { options: T[]; v
 const divider = <div className="h-6 w-px bg-line" />;
 
 // Floating bar that sits just above the selection (or just below it when there is no room above).
+function ArrangeMenu({ count, grouped, locked, below }: { count: number; grouped: boolean; locked: boolean; below: boolean }) {
+  const [open, setOpen] = useState(false);
+  const s = useBoard.getState();
+  const b = "rounded-md px-2 py-1 text-xs font-medium text-muted hover:bg-sunken hover:text-ink disabled:opacity-30 disabled:hover:bg-transparent";
+  const lab = "px-1 text-[11px] text-muted";
+  const align: [AlignMode, string][] = [["left", "Left"], ["hcenter", "Centre"], ["right", "Right"], ["top", "Top"], ["vcenter", "Middle"], ["bottom", "Bottom"]];
+  return (
+    <>
+      <button
+        data-testid="arrange"
+        aria-expanded={open}
+        onClick={() => setOpen((o) => !o)}
+        className={`rounded-lg px-2.5 py-1 text-xs font-medium transition ${open ? "bg-brand text-white" : "text-muted hover:bg-sunken hover:text-ink"}`}
+      >
+        Arrange
+      </button>
+      {open && (
+        <div data-testid="arrange-panel" className={`glass pointer-events-auto absolute left-1/2 z-30 w-72 ${below ? "top-full mt-2" : "bottom-full mb-2"} -translate-x-1/2 space-y-1.5 rounded-xl p-2.5`}>
+          <div className={lab}>Layer</div>
+          <div className="flex flex-wrap gap-0.5">
+            <button className={b} data-testid="layer-front" onClick={() => s.moveLayer("front")}>To front</button>
+            <button className={b} data-testid="layer-forward" onClick={() => s.moveLayer("forward")}>Forward</button>
+            <button className={b} data-testid="layer-backward" onClick={() => s.moveLayer("backward")}>Backward</button>
+            <button className={b} data-testid="layer-back" onClick={() => s.moveLayer("back")}>To back</button>
+          </div>
+          <div className={lab}>Align {count < 2 && "(pick 2 or more)"}</div>
+          <div className="flex flex-wrap gap-0.5">
+            {align.map(([m, t]) => (
+              <button key={m} className={b} disabled={count < 2} data-testid={`align-${m}`} onClick={() => s.alignSelected(m)}>{t}</button>
+            ))}
+          </div>
+          <div className={lab}>Spread out {count < 3 && "(pick 3 or more)"}</div>
+          <div className="flex gap-0.5">
+            <button className={b} disabled={count < 3} data-testid="spread-h" onClick={() => s.distributeSelected("h")}>Sideways</button>
+            <button className={b} disabled={count < 3} data-testid="spread-v" onClick={() => s.distributeSelected("v")}>Up and down</button>
+          </div>
+          <div className="flex gap-0.5 border-t border-line pt-1.5">
+            <button className={b} disabled={count < 2} data-testid="group" onClick={() => s.groupSelected()}>Group</button>
+            <button className={b} disabled={!grouped} data-testid="ungroup" onClick={() => s.ungroupSelected()}>Ungroup</button>
+            <button className={b} data-testid="lock" onClick={() => s.lockSelected(!locked)}>{locked ? "Unlock" : "Lock"}</button>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
 export default function PropertiesPanel() {
   // Select the raw state, then filter. (Filtering inside the selector returns a new array every time,
   // which makes zustand v5 re-render forever.)
@@ -94,6 +144,9 @@ export default function PropertiesPanel() {
   };
 
   const first = selected[0];
+  const things = selected.filter((o) => o.type !== "connector" && o.type !== "comment");
+  const anyGroup = things.some((o) => o.group);
+  const allLocked = things.length > 0 && things.every((o) => o.locked);
   const allType = selected.every((o) => o.type === first.type);
   const canDuplicate = selected.some((o) => o.type !== "connector");
 
@@ -101,7 +154,7 @@ export default function PropertiesPanel() {
     <div className="pointer-events-none absolute z-20" style={{ left, top, transform: `translate(-50%, ${flip ? "0" : "-100%"})` }}>
     <div
       data-testid="context-bar"
-      className="glass pop-in-center pointer-events-auto flex max-w-[calc(100vw-2rem)] items-center gap-3 overflow-x-auto whitespace-nowrap rounded-xl px-3 py-2"
+      className="glass pop-in-center pointer-events-auto flex max-w-[calc(100vw-2rem)] items-center gap-3 overflow-x-auto whitespace-nowrap sm:overflow-visible rounded-xl px-3 py-2"
     >
       <span className="whitespace-nowrap text-xs font-medium capitalize text-muted">{selected.length > 1 ? `${selected.length} selected` : first.type}</span>
       {divider}
@@ -110,14 +163,21 @@ export default function PropertiesPanel() {
       )}
       {allType && first.type === "shape" && (
         <>
-          <Segment
-            options={["rect", "ellipse", "diamond"] as ShapeKind[]}
+          <select
+            aria-label="Shape"
+            data-testid="shape-kind"
             value={first.kind}
-            onPick={(k) => {
+            onChange={(e) => {
+              const k = e.target.value as ShapeKind;
               lastShapeKind.current = k;
               patchAll((o) => (o.type === "shape" ? { kind: k } : null));
             }}
-          />
+            className="h-8 rounded-lg border border-line bg-canvas px-2 text-xs text-ink outline-none focus:border-brand"
+          >
+            {SHAPE_KINDS.map((s) => (
+              <option key={s.kind} value={s.kind}>{s.label}</option>
+            ))}
+          </select>
           <Swatches colors={SHAPE_FILLS} value={first.fill} onPick={(c) => patchAll((o) => (o.type === "shape" ? { fill: c } : null))} />
         </>
       )}
@@ -180,12 +240,25 @@ export default function PropertiesPanel() {
             value={first.lineStyle}
             onPick={(k) => patchAll((o) => (o.type === "connector" ? { lineStyle: k } : null))}
           />
+          <Segment
+            options={["solid", "dashed", "dotted"] as const}
+            value={first.dash ?? "solid"}
+            onPick={(k) => patchAll((o) => (o.type === "connector" ? { dash: k } : null))}
+          />
+          <button
+            onClick={() => patchAll((o) => (o.type === "connector" ? { startArrow: !o.startArrow } : null))}
+            aria-pressed={!!first.startArrow}
+            data-testid="start-arrow"
+            className={`rounded-lg px-2.5 py-1 text-xs font-medium transition ${first.startArrow ? "bg-brand text-white" : "bg-sunken text-muted hover:text-ink"}`}
+          >
+            Start arrow
+          </button>
           <button
             onClick={() => patchAll((o) => (o.type === "connector" ? { endArrow: !o.endArrow } : null))}
             aria-pressed={first.endArrow}
             className={`rounded-lg px-2.5 py-1 text-xs font-medium transition ${first.endArrow ? "bg-brand text-white" : "bg-sunken text-muted hover:text-ink"}`}
           >
-            Arrow
+            End arrow
           </button>
           <Swatches colors={INK_COLORS} value={first.color} onPick={(c) => patchAll((o) => (o.type === "connector" ? { color: c } : null))} />
         </>
@@ -214,6 +287,7 @@ export default function PropertiesPanel() {
         </>
       )}
       {divider}
+      {things.length > 0 && <ArrangeMenu count={things.length} grouped={anyGroup} locked={allLocked} below={(flip ? top : top - 42) < 270} />}
       <div className="flex gap-1">
         {canDuplicate && (
           <button onClick={duplicateSelected} className="rounded-lg px-2.5 py-1 text-xs font-medium text-muted hover:bg-sunken hover:text-ink">

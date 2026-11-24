@@ -11,6 +11,8 @@ import { MAX_SCALE, MIN_SCALE } from "./constants";
 import { sortedFrames } from "./geometry";
 import { isOverlay, withLiveParts } from "./kinds";
 import { MAX_VOTES, newVote } from "./extras";
+import { alignPatches, distributePatches, groupPatches, layerPatches, nextZ, placeable } from "./arrange";
+import type { AlignMode, LayerMove } from "./arrange";
 
 export type Connection = "off" | "connecting" | "live" | "offline";
 
@@ -54,6 +56,12 @@ interface BoardState {
   addObject: (o: BoardObject) => void;
   updateObjects: (patches: Record<string, Partial<BoardObject>>) => void;
   removeSelected: () => void;
+  alignSelected: (mode: AlignMode) => void;
+  distributeSelected: (axis: "h" | "v") => void;
+  groupSelected: () => void;
+  ungroupSelected: () => void;
+  lockSelected: (on: boolean) => void;
+  moveLayer: (move: LayerMove) => void;
   duplicateSelected: () => void;
   copy: () => void;
   paste: () => void;
@@ -83,7 +91,18 @@ const withHistory = (s: BoardState, objects: BoardObject[]) => ({
   future: [] as BoardObject[][],
 });
 
-const cloneWithOffset = (o: BoardObject): BoardObject => ({ ...o, id: nanoid(10), x: o.x + 24, y: o.y + 24 });
+// Copies get new ids, and a copied group becomes a NEW group (it must not join the original).
+const cloneAll = (list: BoardObject[]): BoardObject[] => {
+  const groups = new Map<string, string>();
+  return list.map((o) => {
+    const copy = { ...o, id: nanoid(10), x: o.x + 24, y: o.y + 24 } as BoardObject;
+    if (o.group) {
+      if (!groups.has(o.group)) groups.set(o.group, nanoid(8));
+      copy.group = groups.get(o.group);
+    }
+    return copy;
+  });
+};
 
 // While this is above 0, changes come from other people (or the room), so they must NOT be sent back out.
 let remoteDepth = 0;
@@ -257,7 +276,12 @@ export const useBoard = create<BoardState>((set, get) => ({
   select: (selectedIds) => set({ selectedIds }),
   setEditing: (editingId) => set((s) => (canEditNow(s) ? { editingId } : s)),
 
-  addObject: (o) => set((s) => (canEditNow(s) ? { ...withHistory(s, [...s.objects, o]), selectedIds: [o.id] } : s)),
+  addObject: (o) =>
+    set((s) => {
+      if (!canEditNow(s)) return s;
+      const z = nextZ(s.objects); // on top, once layers are in use
+      return { ...withHistory(s, [...s.objects, z === undefined || o.z !== undefined ? o : ({ ...o, z } as BoardObject)]), selectedIds: [o.id] };
+    }),
 
   updateObjects: (patches) =>
     set((s) => {
@@ -266,6 +290,7 @@ export const useBoard = create<BoardState>((set, get) => ({
       const next = s.objects.map((o) => {
         const p = patches[o.id];
         if (!p) return o;
+        if (o.locked && !("locked" in p)) return o; // a locked object ignores every change except unlocking
         // skip no-op patches (e.g. the same drop reported twice) so undo history stays clean
         if ((Object.keys(p) as (keyof BoardObject)[]).every((k) => o[k] === (p as BoardObject)[k])) return o;
         changed = true;
@@ -277,7 +302,8 @@ export const useBoard = create<BoardState>((set, get) => ({
   removeSelected: () =>
     set((s) => {
       if (!s.selectedIds.length || !canEditNow(s)) return s;
-      const gone = new Set(s.selectedIds);
+      const gone = new Set(s.selectedIds.filter((id) => !s.objects.find((o) => o.id === id)?.locked)); // locked things stay
+      if (!gone.size) return s;
       // a connector disappears together with either of the objects it joins
       const keep = s.objects.filter(
         (o) =>
@@ -288,10 +314,44 @@ export const useBoard = create<BoardState>((set, get) => ({
       return { ...withHistory(s, keep), selectedIds: [] };
     }),
 
+  // ---- arranging (all of these are ordinary undoable edits that sync like any other) ----
+  alignSelected: (mode) => {
+    const s = get();
+    const items = s.objects.filter((o) => s.selectedIds.includes(o.id) && placeable(o) && !o.locked);
+    s.updateObjects(alignPatches(items, mode));
+  },
+  distributeSelected: (axis) => {
+    const s = get();
+    const items = s.objects.filter((o) => s.selectedIds.includes(o.id) && placeable(o) && !o.locked);
+    s.updateObjects(distributePatches(items, axis));
+  },
+  groupSelected: () => {
+    const s = get();
+    const ids = s.objects.filter((o) => s.selectedIds.includes(o.id) && placeable(o) && !o.locked).map((o) => o.id);
+    if (ids.length < 2) return;
+    s.updateObjects(groupPatches(ids, nanoid(8)));
+  },
+  ungroupSelected: () => {
+    const s = get();
+    const ids = s.objects.filter((o) => s.selectedIds.includes(o.id) && o.group).map((o) => o.id);
+    if (ids.length) s.updateObjects(groupPatches(ids, ""));
+  },
+  lockSelected: (on) => {
+    const s = get();
+    const ids = s.selectedIds.filter((id) => s.objects.some((o) => o.id === id && placeable(o)));
+    s.updateObjects(Object.fromEntries(ids.map((id) => [id, { locked: on }])));
+  },
+  moveLayer: (move) => {
+    const s = get();
+    const ids = s.objects.filter((o) => s.selectedIds.includes(o.id) && !o.locked).map((o) => o.id);
+    s.updateObjects(layerPatches(s.objects, ids, move));
+  },
+
   duplicateSelected: () =>
     set((s) => {
       if (!canEditNow(s)) return s;
-      const copies = s.objects.filter((o) => s.selectedIds.includes(o.id) && o.type !== "connector" && !isOverlay(o)).map(cloneWithOffset);
+      const picked = s.objects.filter((o) => s.selectedIds.includes(o.id) && o.type !== "connector" && !isOverlay(o));
+      const copies = cloneAll(picked);
       if (!copies.length) return s;
       return { ...withHistory(s, [...s.objects, ...copies]), selectedIds: copies.map((c) => c.id) };
     }),
@@ -302,7 +362,7 @@ export const useBoard = create<BoardState>((set, get) => ({
   paste: () =>
     set((s) => {
       if (!s.clipboard.length || !canEditNow(s)) return s;
-      const copies = s.clipboard.map(cloneWithOffset);
+      const copies = cloneAll(s.clipboard);
       return {
         ...withHistory(s, [...s.objects, ...copies]),
         selectedIds: copies.map((c) => c.id),

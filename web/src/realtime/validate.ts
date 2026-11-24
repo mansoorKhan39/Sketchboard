@@ -11,10 +11,17 @@ const NUM = ["x", "y", "width", "height", "rotation"] as const;
 const isNum = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
 const size = (v: unknown) => JSON.stringify(v).length;
 
+// Optional layer / lock / group fields: wrong types are refused.
+const badExtras = (r: Record<string, unknown>) =>
+  ("z" in r && !isNum(r.z)) ||
+  ("locked" in r && typeof r.locked !== "boolean") ||
+  ("group" in r && (typeof r.group !== "string" || r.group.length > 64));
+
 export function isObj(o: unknown): o is Obj {
   if (typeof o !== "object" || o === null) return false;
   const r = o as Record<string, unknown>;
   return (
+    !badExtras(r) &&
     typeof r.id === "string" && r.id.length > 0 && r.id.length <= 64 &&
     TYPES.includes(r.type as ObjType) &&
     NUM.every((k) => isNum(r[k])) &&
@@ -39,6 +46,7 @@ export function checkOps(ops: unknown, has: (id: string) => boolean, count: numb
       if (typeof raw.id !== "string" || typeof raw.fields !== "object" || raw.fields === null) return "Bad change.";
       if ("id" in raw.fields || "type" in raw.fields) return "id and type cannot change.";
       for (const k of NUM) if (k in raw.fields && !isNum(raw.fields[k])) return `${k} must be a number.`;
+      if (badExtras(raw.fields)) return "z, locked or group has the wrong type.";
       if (size(raw.fields) > MAX_OBJECT_BYTES) return "Change is too large.";
       // changing something that someone else just deleted is fine: it is ignored
       if (!has(raw.id) && !known.has(raw.id)) continue;

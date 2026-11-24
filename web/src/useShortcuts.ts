@@ -74,6 +74,17 @@ export function useShortcuts() {
           const step = e.shiftKey ? 240 : 60;
           panNow(-dx * step, -dy * step);
         }
+      } else if (mod && k === "g" && s.role !== "viewer") {
+        e.preventDefault(); // Ctrl+G group, Ctrl+Shift+G ungroup
+        e.shiftKey ? s.ungroupSelected() : s.groupSelected();
+      } else if (mod && e.shiftKey && k === "l" && s.role !== "viewer") {
+        e.preventDefault();
+        const picked = s.objects.filter((o) => s.selectedIds.includes(o.id));
+        s.lockSelected(!picked.every((o) => o.locked));
+      } else if (mod && (e.code === "BracketRight" || e.code === "BracketLeft") && s.role !== "viewer") {
+        e.preventDefault(); // Ctrl+] forward, Ctrl+[ backward; add Shift for front / back
+        const up = e.code === "BracketRight";
+        s.moveLayer(e.shiftKey ? (up ? "front" : "back") : up ? "forward" : "backward");
       } else if (mod && k === "z") {
         e.preventDefault();
         e.shiftKey ? s.redo() : s.undo();

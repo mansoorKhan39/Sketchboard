@@ -23,13 +23,15 @@ export default function ConnectorNode({ conn }: { conn: Connector }) {
     stroke,
     strokeWidth: selected ? 3 : 2,
     lineJoin: "round" as const,
+    dash: conn.dash === "dashed" ? [10, 7] : conn.dash === "dotted" ? [2, 6] : undefined,
+    lineCap: (conn.dash === "dotted" ? "round" : "butt") as "round" | "butt",
     hitStrokeWidth: 16,
     onMouseDown: () => tool === "select" && select([conn.id]),
     onTouchStart: () => tool === "select" && select([conn.id]),
   };
   // No `id` on purpose: the resize handles only attach to nodes whose id is an object id.
-  return conn.endArrow ? (
-    <Arrow {...common} fill={stroke} pointerLength={12} pointerWidth={10} />
+  return conn.endArrow || conn.startArrow ? (
+    <Arrow {...common} fill={stroke} pointerLength={12} pointerWidth={10} pointerAtEnding={conn.endArrow} pointerAtBeginning={!!conn.startArrow} />
   ) : (
     <Line {...common} />
   );

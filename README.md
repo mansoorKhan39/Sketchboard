@@ -87,3 +87,10 @@ only affects people who open it afterwards. Guests are all called "Guest". No co
 password reset. The live connection code was tested against a fake Ably (65 unit tests in all), not against the real Ably network. Edits
 from two people at once are merged field by field (last one wins for the same field), and the stacking order of objects
 can differ slightly between screens because there is no single server putting edits in one order.
+
+## Editing tools (Stage 17)
+- **Smart guides:** dragging snaps to the edges and middles of other objects (red dashed lines show what lines up). Hold **Alt** to move freely. "Snap to other objects" and "Snap to grid" are in the zoom menu (the % button).
+- **Arrange menu** (on the bar above a selection): layer order (to front / forward / backward / to back), align (left, centre, right, top, middle, bottom), spread out (3+ objects), group, lock.
+- **Shortcuts:** Ctrl+G group, Ctrl+Shift+G ungroup, Ctrl+Shift+L lock/unlock, Ctrl+] / Ctrl+[ forward / backward (add Shift for front / back).
+- **Layers sync** because each object has an optional `z` number (higher = drawn on top); `locked` and `group` are also plain fields, so other people see them at once.
+- **Shapes:** rectangle, ellipse, diamond, triangle, hexagon, star, block arrow, speech bubble, cloud, cylinder. **Connectors:** solid / dashed / dotted, arrow at either end or both.

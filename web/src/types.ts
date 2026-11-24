@@ -1,6 +1,6 @@
 // Object model — mirrors the Database Design document (shared fields + one shape per type).
 export type Tool = "select" | "sticky" | "shape" | "pen" | "text" | "connector" | "frame" | "comment" | "hand";
-export type ShapeKind = "rect" | "ellipse" | "diamond";
+export type ShapeKind = "rect" | "ellipse" | "diamond" | "triangle" | "hexagon" | "star" | "arrow" | "speech" | "cloud" | "cylinder";
 
 interface Base {
   id: string;
@@ -9,6 +9,9 @@ interface Base {
   width: number;
   height: number;
   rotation: number;
+  z?: number; // layer: higher is drawn on top (missing = 0)
+  locked?: boolean; // cannot be moved, edited or deleted until unlocked
+  group?: string; // objects with the same group id move and select together ("" = no group)
 }
 
 export interface Sticky extends Base {
@@ -104,6 +107,8 @@ export interface Connector extends Base {
   toId: string;
   lineStyle: "straight" | "elbow";
   endArrow: boolean;
+  startArrow?: boolean;
+  dash?: "solid" | "dashed" | "dotted";
   color: string;
 }
 

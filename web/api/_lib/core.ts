@@ -43,6 +43,9 @@ const BoardObject = z.looseObject({
   width: z.number(),
   height: z.number(),
   rotation: z.number(),
+  z: z.number().optional(),
+  locked: z.boolean().optional(),
+  group: z.string().max(64).optional(),
 });
 const ViewportSchema = z.object({ x: z.number(), y: z.number(), scale: z.number().min(0.01).max(100) });
 const Name = z.string().trim().min(1).max(100);

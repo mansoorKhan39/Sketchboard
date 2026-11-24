@@ -1,7 +1,7 @@
 import { isOverlay } from "../kinds";
 import { voterId } from "../extras";
 import { useAuth } from "../auth";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Stage, Layer, Line, Rect, Transformer } from "react-konva";
 import type Konva from "konva";
 import { useBoard, newId } from "../store";
@@ -17,6 +17,7 @@ import { placeImages, toWorld } from "../image";
 import { registerStage } from "../exportPng";
 import { panNow, stopMotion, wheelZoom } from "../navigation";
 import { edgePanSpeed, pinchStep, wheelIntent } from "../viewport";
+import { expandGroups, sortByZ } from "../arrange";
 
 export const lastShapeKind: { current: ShapeKind } = { current: "rect" };
 
@@ -36,6 +37,8 @@ export default function Canvas({ spaceDown }: { spaceDown: boolean }) {
   const trRef = useRef<Konva.Transformer>(null);
 
   const objects = useBoard((s) => s.objects);
+  const guides = useUI((s) => s.guides);
+  const ordered = useMemo(() => sortByZ(objects), [objects]); // drawing order follows the layer (z) of each object
   const selectedIds = useBoard((s) => s.selectedIds);
   const tool = useBoard((s) => s.tool);
   const viewport = useBoard((s) => s.viewport);
@@ -63,7 +66,7 @@ export default function Canvas({ spaceDown }: { spaceDown: boolean }) {
     const stage = stageRef.current;
     const tr = trRef.current;
     if (!stage || !tr) return;
-    const nodes = editingId || !canEdit ? [] : selectedIds.map((id) => stage.findOne("#" + id)).filter((n): n is Konva.Node => !!n);
+    const nodes = editingId || !canEdit ? [] : selectedIds.filter((id) => !objects.find((o) => o.id === id)?.locked).map((id) => stage.findOne("#" + id)).filter((n): n is Konva.Node => !!n);
     tr.nodes(nodes);
     tr.getLayer()?.batchDraw();
   }, [selectedIds, objects, editingId, canEdit]);
@@ -313,7 +316,7 @@ export default function Canvas({ spaceDown }: { spaceDown: boolean }) {
           ? o.x >= left && o.x + o.width <= right && o.y >= top && o.y + o.height <= bottom
           : o.x < right && o.x + o.width > left && o.y < bottom && o.y + o.height > top,
     );
-    select(hit.map((o) => o.id));
+    select(expandGroups(objects, hit.map((o) => o.id)));
   };
 
   const finishLink = () => {
@@ -414,11 +417,21 @@ export default function Canvas({ spaceDown }: { spaceDown: boolean }) {
         onTouchEnd={onStageUp}
       >
         <Layer>
-          {objects.map((o) => (o.type === "frame" ? <ObjectNode key={o.id} obj={o} draggable={tool === "select" && !panMode && canEdit} /> : null))}
+          {ordered.map((o) => (o.type === "frame" ? <ObjectNode key={o.id} obj={o} draggable={tool === "select" && !panMode && canEdit} /> : null))}
           {objects.map((o) => (o.type === "connector" ? <ConnectorNode key={o.id} conn={o} /> : null))}
-          {objects.map((o) =>
+          {ordered.map((o) =>
             o.type === "connector" || o.type === "frame" || isOverlay(o) ? null : <ObjectNode key={o.id} obj={o} draggable={tool === "select" && !panMode && canEdit} />,
           )}
+          {guides.map((g, i) => (
+            <Line
+              key={i}
+              points={g.axis === "x" ? [g.pos, g.from, g.pos, g.to] : [g.from, g.pos, g.to, g.pos]}
+              stroke="#F43F5E"
+              strokeWidth={1 / viewport.scale}
+              dash={[4 / viewport.scale, 3 / viewport.scale]}
+              listening={false}
+            />
+          ))}
           {marquee && (
             <Rect
               x={Math.min(marquee.x1, marquee.x2)}

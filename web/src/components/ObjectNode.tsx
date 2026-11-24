@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Group, Rect, Ellipse, Line, Text, Image as KImage } from "react-konva";
+import { Group, Rect, Ellipse, Line, Path, Text, Image as KImage } from "react-konva";
 import type Konva from "konva";
 import { useRef } from "react";
 import type { Placeable } from "../types";
@@ -9,6 +9,10 @@ import { useUI } from "../ui";
 import { useAuth } from "../auth";
 import { isHiddenFrom, isPrivate, voterId } from "../extras";
 import { inkFor, mixHex } from "../constants";
+import { expandGroups, placeable } from "../arrange";
+import { GRID_SIZE, SNAP_DISTANCE, snapBox } from "../snapping";
+import type { Box } from "../snapping";
+import { curvePath, polygonPoints } from "../shapes";
 
 interface Props {
   obj: Placeable;
@@ -52,15 +56,42 @@ export default function ObjectNode({ obj, draggable }: Props) {
   const masked = obj.type === "sticky" && isHiddenFrom(obj, voterId(userId), privateOn);
   const hidden = editingId === obj.id; // hide text while the textarea overlay is open
 
+  const locked = !!obj.locked;
+  const movable = draggable && !locked;
+
+  // Clicking one member of a group picks the whole group.
   const onDown = (e: Konva.KonvaEventObject<MouseEvent | TouchEvent>) => {
     if (!draggable) return;
+    const all = useBoard.getState().objects;
+    const mates = expandGroups(all, [obj.id]);
     const shift = "shiftKey" in e.evt && e.evt.shiftKey;
     if (shift) {
-      select(selectedIds.includes(obj.id) ? selectedIds.filter((i) => i !== obj.id) : [...selectedIds, obj.id]);
+      select(selectedIds.includes(obj.id) ? selectedIds.filter((i) => !mates.includes(i)) : [...new Set([...selectedIds, ...mates])]);
     } else if (!selectedIds.includes(obj.id)) {
-      select([obj.id]);
+      select(mates);
     }
   };
+
+  // Smart guides: the box being dragged snaps to the other objects (and to the grid when nothing is close).
+  // Done in dragBoundFunc so every selected object follows the corrected position.
+  const drag = useRef<{ sx: number; sy: number; box: Box; others: Box[]; alt: boolean } | null>(null);
+  const bound = (abs: { x: number; y: number }) => {
+    const d = drag.current;
+    const ui = useUI.getState();
+    const stage = stageOf.current;
+    if (!d || !stage || d.alt || (!ui.snap && !ui.grid)) return abs;
+    const w = stage.getAbsoluteTransform().copy().invert().point(abs);
+    const moved = { ...d.box, x: d.box.x + (w.x - d.sx), y: d.box.y + (w.y - d.sy) };
+    const r = snapBox(moved, ui.snap ? d.others : [], SNAP_DISTANCE / stage.scaleX(), ui.grid ? GRID_SIZE : 0);
+    const key = r.guides.map((g) => `${g.axis}${g.pos}`).join();
+    if (key !== lastGuides.current) {
+      lastGuides.current = key;
+      ui.setGuides(r.guides);
+    }
+    return stage.getAbsoluteTransform().point({ x: w.x + r.dx, y: w.y + r.dy });
+  };
+  const stageOf = useRef<Konva.Stage | null>(null);
+  const lastGuides = useRef("");
 
   // Multi-drag: when several nodes are attached to the Transformer, Konva moves them all together.
   // On drop we just read the final position of every selected node and save them in one go.
@@ -68,6 +99,19 @@ export default function ObjectNode({ obj, draggable }: Props) {
   const carried = useRef<{ id: string; x: number; y: number }[]>([]);
   const onDragStart = (e: Konva.KonvaEventObject<DragEvent>) => {
     carried.current = [];
+    stageOf.current = e.target.getStage();
+    {
+      const st = useBoard.getState();
+      const ids = new Set(st.selectedIds.includes(obj.id) ? st.selectedIds : [obj.id]);
+      const mine = st.objects.filter((o) => ids.has(o.id) && placeable(o) && !o.locked);
+      const x1 = Math.min(...mine.map((o) => o.x)), y1 = Math.min(...mine.map((o) => o.y));
+      const x2 = Math.max(...mine.map((o) => o.x + o.width)), y2 = Math.max(...mine.map((o) => o.y + o.height));
+      drag.current = {
+        sx: obj.x, sy: obj.y, alt: false,
+        box: { x: x1, y: y1, width: x2 - x1, height: y2 - y1 },
+        others: st.objects.filter((o) => !ids.has(o.id) && placeable(o)).map((o) => ({ x: o.x, y: o.y, width: o.width, height: o.height })),
+      };
+    }
     if (obj.type !== "frame") return;
     const { objects, selectedIds: sel } = useBoard.getState();
     const stage = e.target.getStage()!;
@@ -78,6 +122,7 @@ export default function ObjectNode({ obj, draggable }: Props) {
     }
   };
   const onDragMove = (e: Konva.KonvaEventObject<DragEvent>) => {
+    if (drag.current) drag.current.alt = e.evt.altKey; // hold Alt to move without snapping
     if (!carried.current.length) return;
     const dx = e.target.x() - obj.x;
     const dy = e.target.y() - obj.y;
@@ -99,10 +144,13 @@ export default function ObjectNode({ obj, draggable }: Props) {
       if (node) patches[c.id] = { x: node.x(), y: node.y() };
     }
     carried.current = [];
+    drag.current = null;
+    lastGuides.current = "";
+    useUI.getState().setGuides([]);
     updateObjects(patches);
   };
 
-  const canEditText = obj.type !== "stroke" && obj.type !== "image" && obj.type !== "frame" && !masked;
+  const canEditText = obj.type !== "stroke" && obj.type !== "image" && obj.type !== "frame" && !masked && !locked;
 
   return (
     <Group
@@ -110,7 +158,8 @@ export default function ObjectNode({ obj, draggable }: Props) {
       x={obj.x}
       y={obj.y}
       rotation={obj.rotation}
-      draggable={draggable}
+      draggable={movable}
+      dragBoundFunc={bound}
       onMouseDown={onDown}
       onTouchStart={onDown}
       onDragStart={onDragStart}
@@ -201,14 +250,23 @@ export default function ObjectNode({ obj, draggable }: Props) {
               strokeWidth={obj.strokeWidth}
             />
           )}
-          {obj.kind === "diamond" && (
+          {polygonPoints(obj.kind, obj.width, obj.height) && (
             <Line
-              points={[obj.width / 2, 0, obj.width, obj.height / 2, obj.width / 2, obj.height, 0, obj.height / 2]}
+              points={polygonPoints(obj.kind, obj.width, obj.height)!}
               closed
+              lineJoin="round"
               fill={obj.fill}
               stroke={obj.stroke}
               strokeWidth={obj.strokeWidth}
             />
+          )}
+          {curvePath(obj.kind) && (
+            <Group scaleX={obj.width / 100} scaleY={obj.height / 100}>
+              <Path data={curvePath(obj.kind)!.body} fill={obj.fill} stroke={obj.stroke} strokeWidth={obj.strokeWidth} strokeScaleEnabled={false} lineJoin="round" />
+              {curvePath(obj.kind)!.detail && (
+                <Path data={curvePath(obj.kind)!.detail!} stroke={obj.stroke} strokeWidth={obj.strokeWidth} strokeScaleEnabled={false} listening={false} />
+              )}
+            </Group>
           )}
           {!hidden && (
             <Text
@@ -279,6 +337,7 @@ export default function ObjectNode({ obj, draggable }: Props) {
           )}
         </>
       )}
+      {locked && <Text text="🔒" x={obj.width - 18} y={-8} fontSize={14} listening={false} />}
     </Group>
   );
 }

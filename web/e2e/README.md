@@ -27,3 +27,6 @@ Look and feel (Stage 13): landing page, sign-in card (inline messages, show/hide
 ## Stage 16 (accounts)
     npm run dev > /tmp/dev.log 2>&1 &                    # the script reads the printed reset e-mail from this file
     NODE_PATH=$(npm root -g) node e2e/e2e-account.cjs    # profile, change/forgot/reset password, delete account, Google button wiring
+
+## Stage 17 (editing tools)
+    NODE_PATH=$(npm root -g) node e2e/e2e-edit.cjs       # snapping + guides, grid, align/spread, group, lock, layer order, new shapes, arrow styles (guest mode)
