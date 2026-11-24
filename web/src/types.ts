@@ -1,5 +1,5 @@
 // Object model — mirrors the Database Design document (shared fields + one shape per type).
-export type Tool = "select" | "sticky" | "shape" | "pen" | "text" | "connector" | "frame" | "comment" | "hand";
+export type Tool = "select" | "sticky" | "shape" | "pen" | "text" | "connector" | "frame" | "comment" | "hand" | "table";
 export type ShapeKind = "rect" | "ellipse" | "diamond" | "triangle" | "hexagon" | "star" | "arrow" | "speech" | "cloud" | "cylinder";
 
 interface Base {
@@ -12,6 +12,12 @@ interface Base {
   z?: number; // layer: higher is drawn on top (missing = 0)
   locked?: boolean; // cannot be moved, edited or deleted until unlocked
   group?: string; // objects with the same group id move and select together ("" = no group)
+  bold?: boolean; // text formatting (sticky, shape, text): one style for the whole object
+  italic?: boolean;
+  underline?: boolean;
+  bullets?: boolean; // every line starts with a bullet
+  align?: "left" | "center" | "right";
+  fs?: number; // font size (sticky, shape, table); 0 or missing = default. Text objects use fontSize
 }
 
 export interface Sticky extends Base {
@@ -112,7 +118,14 @@ export interface Connector extends Base {
   color: string;
 }
 
-export type BoardObject = Sticky | Shape | Stroke | TextObj | ImageObj | FrameObj | CommentObj | VoteObj | TimerObj | ReactionObj | SettingsObj | Connector;
+// A table: rows x columns of equal cells inside the object's box. cells[row][column] is the text.
+export interface TableObj extends Base {
+  type: "table";
+  cells: string[][];
+  header: boolean; // first row is a header (tinted, bold)
+}
+
+export type BoardObject = TableObj | Sticky | Shape | Stroke | TextObj | ImageObj | FrameObj | CommentObj | VoteObj | TimerObj | ReactionObj | SettingsObj | Connector;
 export type Placeable = Exclude<BoardObject, Connector | CommentObj | VoteObj | TimerObj | ReactionObj | SettingsObj>; // everything that has a real position on the board
 
 export interface Viewport {

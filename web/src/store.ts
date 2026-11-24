@@ -35,6 +35,7 @@ interface BoardState {
   tool: Tool;
   viewport: Viewport;
   editingId: string | null;
+  editingCell: { r: number; c: number } | null; // which table cell is being typed in (when editingId is a table)
   past: BoardObject[][];
   future: BoardObject[][];
   clipboard: BoardObject[];
@@ -52,6 +53,7 @@ interface BoardState {
   zoomBy: (factor: number, cx: number, cy: number) => void;
   select: (ids: string[]) => void;
   setEditing: (id: string | null) => void;
+  setEditingCell: (id: string, r: number, c: number) => void;
 
   addObject: (o: BoardObject) => void;
   updateObjects: (patches: Record<string, Partial<BoardObject>>) => void;
@@ -142,6 +144,7 @@ export const useBoard = create<BoardState>((set, get) => ({
   tool: "select",
   viewport: { x: 0, y: 0, scale: 1 },
   editingId: null,
+  editingCell: null,
   past: [],
   future: [],
   clipboard: [],
@@ -274,7 +277,8 @@ export const useBoard = create<BoardState>((set, get) => ({
       return { viewport: { scale, x: cx - (cx - s.viewport.x) * k, y: cy - (cy - s.viewport.y) * k } };
     }),
   select: (selectedIds) => set({ selectedIds }),
-  setEditing: (editingId) => set((s) => (canEditNow(s) ? { editingId } : s)),
+  setEditing: (editingId) => set((s) => (canEditNow(s) ? { editingId, editingCell: null } : s)),
+  setEditingCell: (id, r, c) => set((s) => (canEditNow(s) ? { editingId: id, editingCell: { r, c }, selectedIds: [id] } : s)),
 
   addObject: (o) =>
     set((s) => {

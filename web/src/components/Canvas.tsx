@@ -18,6 +18,7 @@ import { registerStage } from "../exportPng";
 import { panNow, stopMotion, wheelZoom } from "../navigation";
 import { edgePanSpeed, pinchStep, wheelIntent } from "../viewport";
 import { expandGroups, sortByZ } from "../arrange";
+import { makeCells } from "../table";
 
 export const lastShapeKind: { current: ShapeKind } = { current: "rect" };
 
@@ -273,6 +274,14 @@ export default function Canvas({ spaceDown }: { spaceDown: boolean }) {
       addObject(o);
       setTool("select");
       select([o.id]);
+    } else if (tool === "table") {
+      const o: BoardObject = {
+        id: newId(), type: "table", x: x - 180, y: y - 75, width: 360, height: 150, rotation: 0,
+        cells: makeCells(3, 3), header: true,
+      };
+      addObject(o);
+      setTool("select");
+      useBoard.getState().setEditingCell(o.id, 0, 0);
     } else if (tool === "text") {
       const o: BoardObject = {
         id: newId(), type: "text", x, y, width: 200, height: 32, rotation: 0,
@@ -377,7 +386,7 @@ export default function Canvas({ spaceDown }: { spaceDown: boolean }) {
         patches[obj.id] = {
           ...base,
           width: Math.max(30, obj.width * sx),
-          height: obj.type === "text" ? obj.height : Math.max(30, obj.height * sy),
+          height: obj.type === "text" ? obj.height : Math.max(obj.type === "table" ? obj.cells.length * 32 : 30, obj.height * sy),
         };
       }
     }

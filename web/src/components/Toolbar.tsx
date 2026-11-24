@@ -15,6 +15,7 @@ const TOOLS: { id: Tool; label: string; key: string; icon: ReactNode }[] = [
   { id: "hand", label: "Hand (move the view)", key: "H", icon: icon(<path d="M8 13V5.5a1.5 1.5 0 013 0V11m0-6.5a1.5 1.5 0 013 0V11m0-4.5a1.5 1.5 0 013 0V13m0-3.5a1.5 1.5 0 013 0V16a6 6 0 01-6 6h-1.5a6 6 0 01-4.6-2.2L4 15.500a1.600 1.600 0 012.400-2.100L8 15" />) },
   { id: "sticky", label: "Sticky note", key: "N", icon: icon(<path d="M4 4h16v10l-6 6H4zM14 20v-6h6" />) },
   { id: "shape", label: "Shape", key: "S", icon: icon(<><rect x="3" y="11" width="9" height="9" rx="1" /><circle cx="16" cy="8" r="5" /></>) },
+  { id: "table", label: "Table", key: "B", icon: icon(<><rect x="3" y="4" width="18" height="16" rx="1.500" /><path d="M3 10h18M3 15h18M9 4v16M15 4v16" /></>) },
   { id: "pen", label: "Pen", key: "P", icon: icon(<path d="M4 20l4-1 11-11-3-3L5 16zM14 6l3 3" />) },
   { id: "connector", label: "Connector", key: "L", icon: icon(<><circle cx="5" cy="18" r="2" /><circle cx="19" cy="6" r="2" /><path d="M7 18h4a4 4 0 004-4V8" /></>) },
   { id: "frame", label: "Frame", key: "F", icon: icon(<path d="M7 3v18M17 3v18M3 7h18M3 17h18" />) },

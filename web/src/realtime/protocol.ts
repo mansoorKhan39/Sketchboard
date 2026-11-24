@@ -1,6 +1,6 @@
 // Shapes of the board data and of the messages between browsers.
 
-export type ObjType = "sticky" | "shape" | "stroke" | "text" | "image" | "frame" | "comment" | "vote" | "timer" | "reaction" | "settings" | "connector";
+export type ObjType = "sticky" | "shape" | "stroke" | "text" | "image" | "frame" | "comment" | "vote" | "timer" | "reaction" | "settings" | "connector" | "table";
 export interface Obj {
   id: string;
   type: ObjType;

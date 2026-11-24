@@ -94,3 +94,8 @@ can differ slightly between screens because there is no single server putting ed
 - **Shortcuts:** Ctrl+G group, Ctrl+Shift+G ungroup, Ctrl+Shift+L lock/unlock, Ctrl+] / Ctrl+[ forward / backward (add Shift for front / back).
 - **Layers sync** because each object has an optional `z` number (higher = drawn on top); `locked` and `group` are also plain fields, so other people see them at once.
 - **Shapes:** rectangle, ellipse, diamond, triangle, hexagon, star, block arrow, speech bubble, cloud, cylinder. **Connectors:** solid / dashed / dotted, arrow at either end or both.
+
+## Tables and text formatting (Stage 18)
+- **Table tool** (key **B**): click the board for a 3 x 3 table. Type in a cell; **Tab** goes to the next cell, **Enter** to the cell below, double-click opens any cell. The bar above has + Row, - Row, + Col, - Col and Header row. Resize the table by its handles; cells stay equal.
+- **Text formatting** for stickies, shapes, text and tables: bold, italic, underline, bullets, left/centre/right and font size. The style applies to the whole object (not single words). If the text contains a web address an **Open link** button appears.
+- Formatting and table cells are saved as ordinary fields, so they sync live like everything else.

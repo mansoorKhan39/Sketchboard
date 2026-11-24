@@ -1,8 +1,10 @@
 import { VoteButtons } from "./Extras";
 import { voterId } from "../extras";
 import { useAuth } from "../auth";
-import { useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import { SHAPE_KINDS } from "../shapes";
+import { addCol, addRow, removeCol, removeRow } from "../table";
+import { FONT_SIZES, firstLink } from "../textstyle";
 import type { AlignMode } from "../arrange";
 import { useBoard } from "../store";
 import { INK_COLORS, SHAPE_FILLS, STICKY_COLORS } from "../constants";
@@ -116,6 +118,14 @@ export default function PropertiesPanel() {
 
   const canEdit = useBoard((s) => s.role !== "viewer");
   const viewport = useBoard((s) => s.viewport);
+  // The bar's real width, so it can be kept inside the window (it is wider for text and tables).
+  const barRef = useRef<HTMLDivElement>(null);
+  const [barW, setBarW] = useState(0);
+  useLayoutEffect(() => {
+    const w = barRef.current?.offsetWidth ?? 0;
+    if (w !== barW) setBarW(w);
+  });
+
   if (!selected.length || !canEdit) return null;
 
   // Where to float: centred over the selection's box, kept inside the window and clear of the top bar.
@@ -125,7 +135,9 @@ export default function PropertiesPanel() {
   let top = 84;
   let flip = false;
   if (box) {
-    left = Math.min(W - 24, Math.max(24, (box.x + box.width / 2) * viewport.scale + viewport.x));
+    const half = barW / 2 + 8;
+    const mid = (box.x + box.width / 2) * viewport.scale + viewport.x;
+    left = half * 2 >= W ? W / 2 : Math.min(W - half, Math.max(half, mid));
     const above = box.y * viewport.scale + viewport.y - 44; // leaves room for the rotate handle
     const below = (box.y + box.height) * viewport.scale + viewport.y + 14;
     if (above < 150) {
@@ -153,8 +165,9 @@ export default function PropertiesPanel() {
   return (
     <div className="pointer-events-none absolute z-20" style={{ left, top, transform: `translate(-50%, ${flip ? "0" : "-100%"})` }}>
     <div
+      ref={barRef}
       data-testid="context-bar"
-      className="glass pop-in-center pointer-events-auto flex max-w-[calc(100vw-2rem)] items-center gap-3 overflow-x-auto whitespace-nowrap sm:overflow-visible rounded-xl px-3 py-2"
+      className="glass pop-in-center pointer-events-auto flex max-w-[min(760px,calc(100vw-2rem))] flex-wrap items-center justify-center gap-x-3 gap-y-2 rounded-xl px-3 py-2"
     >
       <span className="whitespace-nowrap text-xs font-medium capitalize text-muted">{selected.length > 1 ? `${selected.length} selected` : first.type}</span>
       {divider}
@@ -200,6 +213,92 @@ export default function PropertiesPanel() {
             ))}
           </div>
           <Swatches colors={INK_COLORS} value={first.color} onPick={(c) => patchAll((o) => (o.type === "text" ? { color: c } : null))} />
+        </>
+      )}
+      {selected.every((o) => o.type === "sticky" || o.type === "shape" || o.type === "text" || o.type === "table") && (
+        <>
+          <div className="flex gap-0.5" role="group" aria-label="Text style">
+            {([["bold", "B", "font-bold"], ["italic", "I", "italic"], ["underline", "U", "underline"], ["bullets", "•", ""]] as const).map(([k, t, cls]) => (
+              <button
+                key={k}
+                data-testid={`fmt-${k}`}
+                aria-label={k}
+                aria-pressed={!!first[k]}
+                onClick={() => {
+                  const on = !selected.every((o) => o[k]);
+                  patchAll(() => ({ [k]: on }));
+                }}
+                className={`h-7 w-7 rounded-md text-xs ${cls} ${selected.every((o) => o[k]) ? "bg-brand text-white" : "text-muted hover:bg-sunken hover:text-ink"}`}
+              >
+                {t}
+              </button>
+            ))}
+          </div>
+          <div className="flex gap-0.5" role="group" aria-label="Alignment">
+            {(["left", "center", "right"] as const).map((a) => (
+              <button
+                key={a}
+                data-testid={`fmt-${a}`}
+                aria-label={`Align ${a}`}
+                aria-pressed={first.align === a}
+                onClick={() => patchAll(() => ({ align: a }))}
+                className={`h-7 rounded-md px-1.5 text-[11px] ${first.align === a ? "bg-brand text-white" : "text-muted hover:bg-sunken hover:text-ink"}`}
+              >
+                {a === "left" ? "⇤" : a === "center" ? "↔" : "⇥"}
+              </button>
+            ))}
+          </div>
+          {!(allType && first.type === "text") && (
+            <select
+              aria-label="Font size"
+              data-testid="fmt-size"
+              value={first.fs || ""}
+              onChange={(e) => patchAll(() => ({ fs: e.target.value ? Number(e.target.value) : 0 }))}
+              className="h-7 rounded-md border border-line bg-canvas px-1 text-xs text-ink outline-none focus:border-brand"
+            >
+              <option value="">Size</option>
+              {FONT_SIZES.map((n) => (
+                <option key={n} value={n}>{n}</option>
+              ))}
+            </select>
+          )}
+          {selected.length === 1 && first.type !== "table" && ("text" in first && firstLink(first.text)) && (
+            <a
+              data-testid="open-link"
+              href={"text" in first ? firstLink(first.text)! : undefined}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="rounded-lg px-2 py-1 text-xs font-medium text-brand hover:bg-sunken"
+            >
+              Open link
+            </a>
+          )}
+          {divider}
+        </>
+      )}
+      {selected.length === 1 && first.type === "table" && (
+        <>
+          {(
+            [
+              ["add-row", "+ Row", () => updateObjects({ [first.id]: { cells: addRow(first.cells, first.cells.length), height: (first.height * (first.cells.length + 1)) / first.cells.length } }), first.cells.length >= 30],
+              ["del-row", "− Row", () => updateObjects({ [first.id]: { cells: removeRow(first.cells, first.cells.length - 1), height: (first.height * (first.cells.length - 1)) / first.cells.length } }), first.cells.length <= 1],
+              ["add-col", "+ Col", () => updateObjects({ [first.id]: { cells: addCol(first.cells, first.cells[0].length), width: (first.width * (first.cells[0].length + 1)) / first.cells[0].length } }), first.cells[0].length >= 12],
+              ["del-col", "− Col", () => updateObjects({ [first.id]: { cells: removeCol(first.cells, first.cells[0].length - 1), width: (first.width * (first.cells[0].length - 1)) / first.cells[0].length } }), first.cells[0].length <= 1],
+            ] as const
+          ).map(([id, label, run, off]) => (
+            <button key={id} data-testid={id} disabled={off} onClick={run} className="rounded-md px-2 py-1 text-xs font-medium text-muted hover:bg-sunken hover:text-ink disabled:opacity-30">
+              {label}
+            </button>
+          ))}
+          <button
+            data-testid="table-header"
+            aria-pressed={first.header}
+            onClick={() => updateObjects({ [first.id]: { header: !first.header } })}
+            className={`rounded-md px-2 py-1 text-xs font-medium ${first.header ? "bg-brand text-white" : "text-muted hover:bg-sunken hover:text-ink"}`}
+          >
+            Header row
+          </button>
+          {divider}
         </>
       )}
       {selected.length === 1 && first.type === "frame" && (

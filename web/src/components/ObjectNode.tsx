@@ -13,6 +13,8 @@ import { expandGroups, placeable } from "../arrange";
 import { GRID_SIZE, SNAP_DISTANCE, snapBox } from "../snapping";
 import type { Box } from "../snapping";
 import { curvePath, polygonPoints } from "../shapes";
+import { cellAt } from "../table";
+import { decorationOf, displayText, fontStyleOf } from "../textstyle";
 
 interface Props {
   obj: Placeable;
@@ -49,6 +51,7 @@ export default function ObjectNode({ obj, draggable }: Props) {
   const updateObjects = useBoard((s) => s.updateObjects);
   const setEditing = useBoard((s) => s.setEditing);
   const editingId = useBoard((s) => s.editingId);
+  const editCell = useBoard((s) => s.editingCell);
 
   const theme = useUI((s) => s.theme);
   const privateOn = useBoard((s) => isPrivate(s.objects));
@@ -150,6 +153,16 @@ export default function ObjectNode({ obj, draggable }: Props) {
     updateObjects(patches);
   };
 
+  const openEditor = (e: Konva.KonvaEventObject<MouseEvent | TouchEvent>) => {
+    if (!canEditText || !draggable) return;
+    if (obj.type === "table") {
+      const p = e.target.getStage()!.getRelativePointerPosition()!;
+      const c = cellAt(obj.cells, obj.width, obj.height, p.x - obj.x, p.y - obj.y); // (tables are not rotated in the editor)
+      if (c) useBoard.getState().setEditingCell(obj.id, c.r, c.c);
+      return;
+    }
+    setEditing(obj.id);
+  };
   const canEditText = obj.type !== "stroke" && obj.type !== "image" && obj.type !== "frame" && !masked && !locked;
 
   return (
@@ -165,8 +178,8 @@ export default function ObjectNode({ obj, draggable }: Props) {
       onDragStart={onDragStart}
       onDragMove={onDragMove}
       onDragEnd={onDragEnd}
-      onDblClick={() => canEditText && draggable && setEditing(obj.id)}
-      onDblTap={() => canEditText && draggable && setEditing(obj.id)}
+      onDblClick={(e) => openEditor(e)}
+      onDblTap={(e) => openEditor(e)}
     >
       {obj.type === "sticky" && (
         <>
@@ -209,11 +222,14 @@ export default function ObjectNode({ obj, draggable }: Props) {
           />
           {!hidden && (
             <Text
-              text={masked ? "• • •" : obj.text}
+              text={masked ? "• • •" : displayText(obj, obj.text)}
               width={obj.width}
               height={obj.height}
               padding={14}
-              fontSize={18}
+              fontSize={obj.fs || 18}
+              fontStyle={fontStyleOf(obj)}
+              textDecoration={decorationOf(obj)}
+              align={obj.align ?? "left"}
               fontFamily="Inter, sans-serif"
               lineHeight={1.25}
               fill={masked ? "#6B7280" : "#1F2937"}
@@ -270,13 +286,15 @@ export default function ObjectNode({ obj, draggable }: Props) {
           )}
           {!hidden && (
             <Text
-              text={obj.text}
+              text={displayText(obj, obj.text)}
               width={obj.width}
               height={obj.height}
-              align="center"
+              align={obj.align ?? "center"}
               verticalAlign="middle"
               padding={10}
-              fontSize={16}
+              fontSize={obj.fs || 16}
+              fontStyle={fontStyleOf(obj)}
+              textDecoration={decorationOf(obj)}
               fontFamily="Inter, sans-serif"
               lineHeight={1.25}
               fill="#1F2937"
@@ -318,6 +336,47 @@ export default function ObjectNode({ obj, draggable }: Props) {
         </>
       )}
 
+      {obj.type === "table" && (() => {
+        const rows = obj.cells.length, cols = obj.cells[0].length;
+        const cw = obj.width / cols, ch = obj.height / rows;
+        return (
+          <>
+            <Rect width={obj.width} height={obj.height} fill="#FFFFFF" stroke="#94A3B8" strokeWidth={1.5} cornerRadius={4} shadowColor="#0B1020" shadowBlur={10} shadowOpacity={0.1} shadowOffsetY={3} />
+            {obj.header && <Rect width={obj.width} height={ch} fill="#EEF2FF" cornerRadius={[4, 4, 0, 0]} listening={false} />}
+            {Array.from({ length: rows - 1 }, (_, i) => (
+              <Line key={"r" + i} points={[0, (i + 1) * ch, obj.width, (i + 1) * ch]} stroke="#CBD5E1" strokeWidth={1} listening={false} />
+            ))}
+            {Array.from({ length: cols - 1 }, (_, i) => (
+              <Line key={"c" + i} points={[(i + 1) * cw, 0, (i + 1) * cw, obj.height]} stroke="#CBD5E1" strokeWidth={1} listening={false} />
+            ))}
+            {obj.cells.map((row, r) =>
+              row.map((t, c) =>
+                t && !(editingId === obj.id && editCell?.r === r && editCell?.c === c) ? (
+                  <Text
+                    key={r + "-" + c}
+                    text={displayText(obj, t)}
+                    x={c * cw}
+                    y={r * ch}
+                    width={cw}
+                    height={ch}
+                    padding={6}
+                    fontSize={obj.fs || 15}
+                    fontFamily="Inter, sans-serif"
+                    fontStyle={fontStyleOf({ ...obj, bold: obj.bold || (obj.header && r === 0) })}
+                    textDecoration={decorationOf(obj)}
+                    align={obj.align ?? "left"}
+                    verticalAlign="middle"
+                    ellipsis
+                    fill="#1F2937"
+                    listening={false}
+                  />
+                ) : null,
+              ),
+            )}
+          </>
+        );
+      })()}
+
       {obj.type === "image" && <Picture src={obj.src} width={obj.width} height={obj.height} />}
 
       {obj.type === "text" && (
@@ -326,8 +385,11 @@ export default function ObjectNode({ obj, draggable }: Props) {
           <Rect width={obj.width} height={obj.height} fill="transparent" />
           {!hidden && (
             <Text
-              text={obj.text}
+              text={displayText(obj, obj.text)}
               width={obj.width}
+              align={obj.align ?? "left"}
+              fontStyle={fontStyleOf(obj)}
+              textDecoration={decorationOf(obj)}
               fontSize={obj.fontSize}
               fontFamily="Inter, sans-serif"
               lineHeight={1.25}

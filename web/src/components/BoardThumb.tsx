@@ -53,6 +53,8 @@ export default function BoardThumb({ objects }: { objects: BoardObject[] }) {
             return <ellipse key={o.id} cx={o.x + o.width / 2} cy={o.y + o.height / 2} rx={o.width / 2} ry={o.height / 2} {...common} />;
           return <rect key={o.id} x={o.x} y={o.y} width={o.width} height={o.height} rx={8} {...common} />;
         }
+        if (o.type === "table")
+          return <rect key={o.id} x={o.x} y={o.y} width={o.width} height={o.height} rx={3} fill="#fff" stroke="currentColor" strokeWidth={sw} opacity={0.9} />;
         if (o.type === "stroke") {
           const pts = o.points.map((v, i) => (i % 2 === 0 ? v + o.x : v + o.y));
           const d = pts.reduce((acc, v, i) => (i % 2 === 0 ? `${acc}${i ? "L" : "M"}${v},` : `${acc}${v}`), "");

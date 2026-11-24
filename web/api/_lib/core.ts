@@ -37,7 +37,7 @@ const LoginBody = z.object({ email: Email, password: z.string("Enter your passwo
 
 const BoardObject = z.looseObject({
   id: z.string().min(1).max(64),
-  type: z.enum(["sticky", "shape", "stroke", "text", "image", "frame", "comment", "vote", "timer", "reaction", "settings", "connector"]),
+  type: z.enum(["sticky", "shape", "stroke", "text", "image", "frame", "comment", "vote", "timer", "reaction", "settings", "connector", "table"]),
   x: z.number(),
   y: z.number(),
   width: z.number(),

@@ -1,11 +1,12 @@
 import type { Obj, ObjType, Op } from "./protocol";
+import { validCells } from "../table";
 
 export const MAX_OBJECTS = 5000;
 export const MAX_OPS_PER_EDIT = 200;
 const MAX_OBJECT_BYTES = 64_000;
 export const MAX_IMAGE_BYTES = 200_000; // pictures are compressed in the browser to stay under this
 const limitFor = (type: unknown) => (type === "image" ? MAX_IMAGE_BYTES : MAX_OBJECT_BYTES);
-const TYPES: ObjType[] = ["sticky", "shape", "stroke", "text", "image", "frame", "comment", "vote", "timer", "reaction", "settings", "connector"];
+const TYPES: ObjType[] = ["sticky", "shape", "stroke", "text", "image", "frame", "comment", "vote", "timer", "reaction", "settings", "connector", "table"];
 const NUM = ["x", "y", "width", "height", "rotation"] as const;
 
 const isNum = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
@@ -15,13 +16,17 @@ const size = (v: unknown) => JSON.stringify(v).length;
 const badExtras = (r: Record<string, unknown>) =>
   ("z" in r && !isNum(r.z)) ||
   ("locked" in r && typeof r.locked !== "boolean") ||
-  ("group" in r && (typeof r.group !== "string" || r.group.length > 64));
+  ("group" in r && (typeof r.group !== "string" || r.group.length > 64)) ||
+  (["bold", "italic", "underline", "bullets"] as const).some((k) => k in r && typeof r[k] !== "boolean") ||
+  ("align" in r && r.align !== "left" && r.align !== "center" && r.align !== "right") ||
+  ("fs" in r && (!isNum(r.fs) || (r.fs !== 0 && (r.fs < 6 || r.fs > 200))));
 
 export function isObj(o: unknown): o is Obj {
   if (typeof o !== "object" || o === null) return false;
   const r = o as Record<string, unknown>;
   return (
     !badExtras(r) &&
+    (r.type !== "table" || validCells(r.cells)) &&
     typeof r.id === "string" && r.id.length > 0 && r.id.length <= 64 &&
     TYPES.includes(r.type as ObjType) &&
     NUM.every((k) => isNum(r[k])) &&
@@ -47,6 +52,7 @@ export function checkOps(ops: unknown, has: (id: string) => boolean, count: numb
       if ("id" in raw.fields || "type" in raw.fields) return "id and type cannot change.";
       for (const k of NUM) if (k in raw.fields && !isNum(raw.fields[k])) return `${k} must be a number.`;
       if (badExtras(raw.fields)) return "z, locked or group has the wrong type.";
+      if ("cells" in raw.fields && !validCells(raw.fields.cells)) return "Bad table.";
       if (size(raw.fields) > MAX_OBJECT_BYTES) return "Change is too large.";
       // changing something that someone else just deleted is fine: it is ignored
       if (!has(raw.id) && !known.has(raw.id)) continue;

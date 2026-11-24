@@ -30,3 +30,6 @@ Look and feel (Stage 13): landing page, sign-in card (inline messages, show/hide
 
 ## Stage 17 (editing tools)
     NODE_PATH=$(npm root -g) node e2e/e2e-edit.cjs       # snapping + guides, grid, align/spread, group, lock, layer order, new shapes, arrow styles (guest mode)
+
+## Stage 18 (tables and text formatting)
+    NODE_PATH=$(npm root -g) node e2e/e2e-text.cjs       # table tool, typing in cells (Tab/Enter), rows/columns/header, bold/italic/underline/bullets/align/size, links (guest mode)
