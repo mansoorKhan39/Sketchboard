@@ -99,3 +99,9 @@ can differ slightly between screens because there is no single server putting ed
 - **Table tool** (key **B**): click the board for a 3 x 3 table. Type in a cell; **Tab** goes to the next cell, **Enter** to the cell below, double-click opens any cell. The bar above has + Row, - Row, + Col, - Col and Header row. Resize the table by its handles; cells stay equal.
 - **Text formatting** for stickies, shapes, text and tables: bold, italic, underline, bullets, left/centre/right and font size. The style applies to the whole object (not single words). If the text contains a web address an **Open link** button appears.
 - Formatting and table cells are saved as ordinary fields, so they sync live like everything else.
+
+## Board management (Stage 19)
+- **Dashboard:** star a board (Favourites), **Move to folder…** (folders appear as chips), search by name or folder, **Move to trash** (30 days, then removed for good), **Restore**, **Delete forever**, **Empty trash**. Works for guest boards and account boards.
+- **Export** (top bar): PNG, **PDF**, **SVG** (sharp at any size) and **Board file** (`.sketchboard.json`). On the dashboard **Import** reads such a file into a new board; damaged items are skipped and counted.
+- **Embed:** in Share, a "Can view" link also gives an `<iframe>` code. Embedded boards (`#/s/<token>?embed=1`) show only the canvas, a zoom control and an "Open in Sketchboard" link.
+- A board in the trash cannot be opened through its public link, and a duplicate never copies the share link of the original.

@@ -33,3 +33,7 @@ Look and feel (Stage 13): landing page, sign-in card (inline messages, show/hide
 
 ## Stage 18 (tables and text formatting)
     NODE_PATH=$(npm root -g) node e2e/e2e-text.cjs       # table tool, typing in cells (Tab/Enter), rows/columns/header, bold/italic/underline/bullets/align/size, links (guest mode)
+
+## Stage 19 (board management)
+    # start the dev server with any Ably key so the Share panel works:  ABLY_API_KEY=app.key:secret npm run dev   (Windows cmd: set ABLY_API_KEY=app.key:secret && npm run dev)
+    NODE_PATH=$(npm root -g) node e2e/e2e-manage.cjs     # favourites, folders, search, trash/restore, export PDF/SVG/PNG/JSON, import, embed

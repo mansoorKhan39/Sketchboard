@@ -22,6 +22,9 @@ export interface CloudBoard {
   viewport: Viewport;
   createdAt: number;
   updatedAt: number;
+  favorite?: boolean;
+  folder?: string;
+  deletedAt?: number; // moved to the trash at this time (0 = not in the trash)
 }
 
 export interface VersionInfo {
@@ -88,6 +91,7 @@ export const api = {
   createBoard: (name: string, objects: BoardObject[]) => call<{ board: CloudBoard }>("POST", "/boards", { name, objects }),
   saveBoard: (id: string, objects: BoardObject[], viewport: Viewport) => call<{ updatedAt: number }>("PUT", `/boards/${id}`, { objects, viewport }),
   renameBoard: (id: string, name: string) => call<{ name: string }>("PATCH", `/boards/${id}`, { name }),
+  updateBoard: (id: string, patch: { name?: string; favorite?: boolean; folder?: string; trashed?: boolean }) => call<unknown>("PATCH", `/boards/${id}`, patch),
   deleteBoard: (id: string) => call<void>("DELETE", `/boards/${id}`),
   joinBoard: (id: string) => call<JoinInfo>("POST", `/boards/${id}/join`),
   shareJoin: (token: string, name: string, guestId?: string) => call<JoinInfo>("POST", `/share/${token}/join`, { name, guestId }),

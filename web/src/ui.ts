@@ -37,6 +37,9 @@ function initialTheme(): Theme {
   return window.matchMedia?.("(prefers-color-scheme: dark)").matches ? "dark" : "light";
 }
 
+// A board opened inside someone else's page (an iframe) uses ...#/s/<token>?embed=1 and shows only the canvas.
+export const isEmbed = () => /[?&]embed=1(&|$)/.test(window.location.hash);
+
 // The address bar is the source of truth for which screen is open: #/board/<id> or nothing (dashboard).
 // That makes refresh and the browser Back button work with no router library.
 export function viewFromHash(): View {

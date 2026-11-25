@@ -46,7 +46,7 @@ const { chromium } = require('playwright');
 
   // narrow window: nothing wraps or hides behind something else
   await p.setViewportSize({ width: 820, height: 700 }); await p.waitForTimeout(300);
-  const exp = await p.getByTestId('export-png').boundingBox();
+  const exp = await p.getByTestId('export').boundingBox();
   ok('Export PNG stays on one line', !!exp && exp.height < 44);
   const extras = await p.getByText('Private').boundingBox(); const zoom = await p.getByTestId('zoom').boundingBox();
   ok('"Private" does not sit under the zoom bar', !!extras && !!zoom && (extras.y + extras.height < zoom.y || extras.x + extras.width < zoom.x));

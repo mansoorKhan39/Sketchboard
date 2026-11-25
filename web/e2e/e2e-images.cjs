@@ -9,7 +9,7 @@ const fs = require('fs');
   await p.getByTestId('new-board').click(); await p.waitForTimeout(700);
 
   // export on an empty board gives a clear message
-  await p.getByTestId('export-png').click(); await p.waitForTimeout(300);
+  await (async () => { await p.getByTestId('export').click(); await p.getByTestId('export-png').click(); })(); await p.waitForTimeout(300);
   ok('empty board: export says so', ((await p.getByTestId('notice').textContent().catch(() => '')) || '').includes('empty'));
 
   // make a 1600x1000 test picture in the page and pick it like a user would
@@ -37,7 +37,7 @@ const fs = require('fs');
   ok('picture is still there after reload', again === 1);
 
   // export
-  const [dl] = await Promise.all([p.waitForEvent('download', { timeout: 8000 }).catch(() => null), p.getByTestId('export-png').click()]);
+  const [dl] = await Promise.all([p.waitForEvent('download', { timeout: 8000 }).catch(() => null), (async () => { await p.getByTestId('export').click(); await p.getByTestId('export-png').click(); })()]);
   ok('export gives a file', !!dl);
   if (dl) {
     const path = 'e2e/out-export.png'; await dl.saveAs(path); const buf = fs.readFileSync(path);

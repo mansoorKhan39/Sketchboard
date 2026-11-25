@@ -30,7 +30,7 @@ const { chromium } = require('playwright');
 
   // comments are not board content: Export PNG still says "empty", Fit and marquee ignore them
   await p.getByTestId('comment-pin').click(); await p.waitForTimeout(100);
-  await p.getByTestId('export-png').click(); await p.waitForTimeout(300);
+  await (async () => { await p.getByTestId('export').click(); await p.getByTestId('export-png').click(); })(); await p.waitForTimeout(300);
   ok('a board with only a pin counts as empty for export', ((await p.getByTestId('notice').textContent().catch(() => '')) || '').includes('empty'));
 
   // persistence: reload keeps the thread

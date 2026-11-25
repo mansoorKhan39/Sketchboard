@@ -18,11 +18,30 @@ import Logo from "./components/Logo";
 import { useAuth } from "./auth";
 import { useShortcuts } from "./useShortcuts";
 import { useBoard } from "./store";
-import { useUI } from "./ui";
+import { isEmbed, useUI } from "./ui";
 
 function BoardScreen() {
   const spaceDown = useShortcuts();
   const presenting = useBoard((s) => s.present !== null);
+  const [embed] = useState(isEmbed);
+  if (embed) {
+    // inside someone else's page: just the board to look at, a zoom control, and a link to open it properly
+    return (
+      <div className="relative h-full w-full overflow-hidden" style={{ backgroundImage: "radial-gradient(var(--dot) 1.2px, transparent 1.2px)", backgroundSize: "24px 24px" }} data-testid="embed">
+        <Canvas spaceDown={spaceDown} />
+        <PeerCursors />
+        <BottomBars />
+        <a
+          href={window.location.href.replace(/[?&]embed=1/, "")}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="absolute left-3 top-3 flex items-center gap-2 rounded-lg border border-line bg-surface px-2.5 py-1.5 text-xs font-medium shadow-sm hover:border-brand"
+        >
+          <Logo size={16} /> Open in Sketchboard
+        </a>
+      </div>
+    );
+  }
   return (
     <div
       className="relative h-full w-full overflow-hidden"

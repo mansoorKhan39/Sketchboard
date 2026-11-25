@@ -32,6 +32,9 @@ export interface BoardRec {
   objects: unknown[]; // validated on the way in, stored as-is
   viewport: Viewport;
   share?: ShareSettings;
+  favorite?: boolean; // starred by the owner
+  folder?: string; // name of the folder the owner put it in ("" or missing = no folder)
+  deletedAt?: number; // when it was moved to the trash (0 or missing = not in the trash)
   createdAt: number;
   updatedAt: number;
 }

@@ -13,6 +13,7 @@ export default function ShareDialog() {
   const [state, setState] = useState<"loading" | "ready" | "error">("loading");
   const [error, setError] = useState("");
   const [copied, setCopied] = useState(false);
+  const [copiedEmbed, setCopiedEmbed] = useState(false);
 
   useEffect(() => {
     if (!user) return;
@@ -50,6 +51,8 @@ export default function ShareDialog() {
   }
 
   const link = share ? `${window.location.origin}${window.location.pathname}#/s/${share.token}` : "";
+
+  const embedCode = `<iframe src="${link}?embed=1" width="800" height="500" style="border:1px solid #ddd;border-radius:8px" allowfullscreen loading="lazy"></iframe>`;
 
   return (
     <div>
@@ -97,6 +100,33 @@ export default function ShareDialog() {
                   {copied ? "Copied" : "Copy"}
                 </button>
               </div>
+              {share.right === "viewer" ? (
+                <div className="mt-3">
+                  <div className="text-xs font-medium">Embed on a web page</div>
+                  <textarea
+                    readOnly
+                    data-testid="embed-code"
+                    aria-label="Embed code"
+                    rows={3}
+                    value={embedCode}
+                    onFocus={(e) => e.target.select()}
+                    className="mt-1 w-full resize-none rounded-lg border border-line bg-surface px-2 py-1.5 font-mono text-[11px] outline-none"
+                  />
+                  <button
+                    data-testid="copy-embed"
+                    onClick={async () => {
+                      await navigator.clipboard?.writeText(embedCode).catch(() => {});
+                      setCopiedEmbed(true);
+                      setTimeout(() => setCopiedEmbed(false), 1500);
+                    }}
+                    className="mt-1 text-xs text-brand hover:underline"
+                  >
+                    {copiedEmbed ? "Copied" : "Copy embed code"}
+                  </button>
+                </div>
+              ) : (
+                <p className="mt-3 text-xs text-muted">To embed this board on a web page, set the link to "Can view".</p>
+              )}
               <button onClick={() => update({ enabled: true, regenerate: true })} className="mt-3 text-xs text-muted underline hover:text-ink">
                 Make a new link (the old one stops working)
               </button>

@@ -174,20 +174,23 @@ async function connect(gen: number) {
     if (change.current === "connected" && session?.everLive && session.ready) set({ connection: "live" });
   });
 
-  edits.subscribe("edit", (m) => onRemote(gen, (m.data as EditMsg | undefined)?.ops));
-  edits.subscribe("chunk", (m) => onRemote(gen, assemble(m.connectionId ?? "?", m.data as ChunkMsg)));
+  // (subscribe() also returns a promise in Ably 2: if the connection closes while attaching it rejects, and nobody needs to know)
+  quiet(edits.subscribe("edit", (m) => onRemote(gen, (m.data as EditMsg | undefined)?.ops)));
+  quiet(edits.subscribe("chunk", (m) => onRemote(gen, assemble(m.connectionId ?? "?", m.data as ChunkMsg))));
   edits.on("attached", (change) => {
     // first time, or Ably could not replay everything we missed: load the board again to be sure
     if (gen === generation && (!session?.ready || change.resumed === false)) void sync(gen);
   });
   edits.on("failed", (change) => giveUp(gen, change.reason?.code === 40160 ? "You do not have access to this board." : `Could not connect to this board. (${why(change.reason)})`, change.reason));
 
-  cur.subscribe("c", (m) => {
-    const d = m.data as CursorMsg | undefined;
-    if (gen !== generation || !m.connectionId || m.connectionId === myId || typeof d?.x !== "number" || typeof d?.y !== "number") return;
-    set({ cursors: { ...useBoard.getState().cursors, [m.connectionId]: { x: d.x, y: d.y, at: Date.now() } } });
-  });
-  cur.presence.subscribe(() => void refreshPeers(gen));
+  quiet(
+    cur.subscribe("c", (m) => {
+      const d = m.data as CursorMsg | undefined;
+      if (gen !== generation || !m.connectionId || m.connectionId === myId || typeof d?.x !== "number" || typeof d?.y !== "number") return;
+      set({ cursors: { ...useBoard.getState().cursors, [m.connectionId]: { x: d.x, y: d.y, at: Date.now() } } });
+    }),
+  );
+  quiet(cur.presence.subscribe(() => void refreshPeers(gen)));
 }
 
 // Load the true board from the server, lay the edits we missed and our own unconfirmed edits on top, then go live.
@@ -239,6 +242,8 @@ function onRemote(gen: number, ops: unknown) {
   if (checkOps(ops, (id) => ids.has(id), store.objects.length)) return;
   store.applyRemoteOps(ops as Op[]);
 }
+
+const quiet = (p: unknown) => void (p as Promise<unknown> | undefined)?.catch?.(() => {});
 
 async function refreshPeers(gen: number) {
   const ch = cur;

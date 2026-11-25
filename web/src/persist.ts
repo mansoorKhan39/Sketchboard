@@ -13,6 +13,9 @@ export interface BoardMeta {
   name: string;
   createdAt: number;
   updatedAt: number;
+  favorite?: boolean;
+  folder?: string;
+  deletedAt?: number;
 }
 export interface BoardData {
   objects: BoardObject[];
@@ -87,6 +90,21 @@ export function createBoard(name: string, objects: BoardObject[] = []): BoardMet
 export function renameBoard(id: string, name: string) {
   const clean = name.trim() || "Untitled board";
   saveIndex(listBoards().map((b) => (b.id === id ? { ...b, name: clean } : b)));
+}
+
+// favourite / folder / trash (trashed = true puts it in the trash, false brings it back)
+export function updateBoardMeta(id: string, patch: { name?: string; favorite?: boolean; folder?: string; trashed?: boolean }) {
+  saveIndex(
+    listBoards().map((b) => {
+      if (b.id !== id) return b;
+      const n = { ...b };
+      if (patch.name !== undefined) n.name = patch.name.trim() || "Untitled board";
+      if (patch.favorite !== undefined) n.favorite = patch.favorite;
+      if (patch.folder !== undefined) n.folder = patch.folder.trim().slice(0, 40);
+      if (patch.trashed !== undefined) n.deletedAt = patch.trashed ? Date.now() : 0;
+      return n;
+    }),
+  );
 }
 
 export function deleteBoard(id: string) {

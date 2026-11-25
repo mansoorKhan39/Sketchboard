@@ -14,8 +14,13 @@ export interface BoardSummary {
   name: string;
   createdAt: number;
   updatedAt: number;
+  favorite?: boolean;
+  folder?: string;
+  deletedAt?: number; // set while the board is in the trash
   objects: BoardObject[]; // needed for the dashboard thumbnails
 }
+export type BoardPatch = { name?: string; favorite?: boolean; folder?: string; trashed?: boolean };
+export const TRASH_DAYS = 30;
 export interface BoardFull extends BoardSummary {
   viewport: Viewport;
 }
@@ -27,6 +32,8 @@ export interface Repo {
   get(id: string): Promise<BoardFull | null>;
   create(name: string, objects?: BoardObject[]): Promise<BoardSummary>;
   rename(id: string, name: string): Promise<void>;
+  update(id: string, patch: BoardPatch): Promise<void>; // favourite, folder, trash
+
   remove(id: string): Promise<void>;
   duplicate(id: string): Promise<BoardSummary | null>;
   save(id: string, objects: BoardObject[], viewport: Viewport): Promise<void>;
@@ -40,6 +47,9 @@ export const localRepo: Repo = {
   kind: "local",
   saveDelay: 300,
   async list() {
+    // boards left in the trash for 30 days are removed for good
+    const limit = Date.now() - TRASH_DAYS * 86400_000;
+    for (const m of local.listBoards()) if (m.deletedAt && m.deletedAt < limit) local.deleteBoard(m.id);
     return local.listBoards().map((m) => ({ ...m, objects: local.loadBoardData(m.id)?.objects ?? [] }));
   },
   async get(id) {
@@ -53,6 +63,9 @@ export const localRepo: Repo = {
   },
   async rename(id, name) {
     local.renameBoard(id, name);
+  },
+  async update(id, patch) {
+    local.updateBoardMeta(id, patch);
   },
   async remove(id) {
     local.deleteBoard(id);
@@ -75,8 +88,9 @@ export const localRepo: Repo = {
   },
 };
 
-const summary = (b: { id: string; name: string; createdAt: number; updatedAt: number; objects: BoardObject[] }): BoardSummary => ({
+const summary = (b: { id: string; name: string; createdAt: number; updatedAt: number; objects: BoardObject[]; favorite?: boolean; folder?: string; deletedAt?: number }): BoardSummary => ({
   id: b.id, name: b.name, createdAt: b.createdAt, updatedAt: b.updatedAt, objects: b.objects,
+  favorite: !!b.favorite, folder: b.folder ?? "", deletedAt: b.deletedAt ?? 0,
 });
 
 export const cloudRepo: Repo = {
@@ -98,6 +112,9 @@ export const cloudRepo: Repo = {
   },
   async rename(id, name) {
     await api.renameBoard(id, name);
+  },
+  async update(id, patch) {
+    await api.updateBoard(id, patch);
   },
   async remove(id) {
     await api.deleteBoard(id);

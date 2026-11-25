@@ -4,7 +4,7 @@ import { flushSave, useBoard } from "../store";
 import ThemeToggle from "./ThemeToggle";
 import ShareDialog from "./ShareDialog";
 import Logo from "./Logo";
-import { exportPng } from "../exportPng";
+import { exportJson, exportPdf, exportPng, exportSvg } from "../exportPng";
 import HistoryPanel from "./HistoryPanel";
 
 export default function TopBar() {
@@ -20,6 +20,7 @@ export default function TopBar() {
   const canRename = mode === "owned" && role !== "viewer";
   const [name, setName] = useState(storedName);
   const [share, setShare] = useState(false);
+  const [exportOpen, setExportOpen] = useState(false);
   const [history, setHistory] = useState(false);
   const shareRef = useRef<HTMLDivElement>(null);
 
@@ -141,20 +142,46 @@ export default function TopBar() {
             Present
           </button>
         )}
-        <button
-          onClick={() => {
-            const err = exportPng(name || "board");
-            if (err) {
-              useBoard.setState({ notice: err });
-              setTimeout(() => useBoard.getState().notice === err && useBoard.setState({ notice: "" }), 4000);
-            }
-          }}
-          data-testid="export-png"
-          title="Save the board as a PNG picture"
-          className="h-9 whitespace-nowrap rounded-lg border border-line px-3 text-sm font-medium hover:border-brand hover:bg-brand-soft"
-        >
-          Export PNG
-        </button>
+        <div className="relative">
+          <button
+            onClick={() => setExportOpen((o) => !o)}
+            data-testid="export"
+            aria-expanded={exportOpen}
+            title="Save the board as a picture, PDF or file"
+            className="h-9 whitespace-nowrap rounded-lg border border-line px-3 text-sm font-medium hover:border-brand hover:bg-brand-soft"
+          >
+            Export
+          </button>
+          {exportOpen && (
+            <div className="absolute right-0 top-full z-40 mt-2 w-60 rounded-xl border border-line bg-surface p-1 shadow-float" data-testid="export-menu">
+              {(
+                [
+                  ["png", "PNG picture", "For slides and chat", exportPng],
+                  ["pdf", "PDF", "For printing and sending", exportPdf],
+                  ["svg", "SVG drawing", "Stays sharp at any size", exportSvg],
+                  ["json", "Board file", "Import it again later", exportJson],
+                ] as const
+              ).map(([id, label, hint, run]) => (
+                <button
+                  key={id}
+                  data-testid={`export-${id}`}
+                  onClick={() => {
+                    setExportOpen(false);
+                    const err = run(name || "board");
+                    if (err) {
+                      useBoard.setState({ notice: err });
+                      setTimeout(() => useBoard.getState().notice === err && useBoard.setState({ notice: "" }), 4000);
+                    }
+                  }}
+                  className="block w-full rounded-md px-3 py-1.5 text-left hover:bg-sunken"
+                >
+                  <div className="text-sm font-medium">{label}</div>
+                  <div className="text-xs text-muted">{hint}</div>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
         <ThemeToggle />
         {role === "viewer" && <span data-testid="viewer-badge" className="rounded-lg bg-sunken px-2.5 py-1 text-xs font-medium text-muted">View only</span>}
         {mode === "owned" && (

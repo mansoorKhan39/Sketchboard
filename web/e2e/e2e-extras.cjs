@@ -64,7 +64,7 @@ const { chromium } = require('playwright');
 
   // none of these count as board content
   await p.evaluate(() => { const g = window.__board.getState(); g.select(g.objects.filter(o => o.type === 'sticky').map(o => o.id)); g.removeSelected(); }); await p.waitForTimeout(200);
-  await p.getByTestId('export-png').click(); await p.waitForTimeout(300);
+  await (async () => { await p.getByTestId('export').click(); await p.getByTestId('export-png').click(); })(); await p.waitForTimeout(300);
   ok('votes alone do not count as content (export says empty)', ((await p.getByTestId('notice').textContent().catch(() => '')) || '').includes('empty'));
   ok('no page errors ' + JSON.stringify(errs), errs.length === 0);
   await p.screenshot({ path: 'e2e/out-extras.png' });

@@ -52,7 +52,11 @@ const Name = z.string().trim().min(1).max(100);
 const CreateBody = z.object({ name: Name.optional(), objects: z.array(BoardObject).max(5000).optional() });
 const SaveBody = z.object({ objects: z.array(BoardObject).max(5000), viewport: ViewportSchema.optional() });
 const VersionBody = z.object({ label: z.string().trim().max(60).optional(), objects: z.array(BoardObject).max(5000) });
-const RenameBody = z.object({ name: Name });
+// PATCH on a board: any of these. "trashed" moves it to / back from the trash.
+const PatchBody = z
+  .object({ name: Name.optional(), favorite: z.boolean().optional(), folder: z.string().trim().max(40).optional(), trashed: z.boolean().optional() })
+  .refine((b) => Object.keys(b).length > 0, "Nothing to change");
+export const TRASH_DAYS = 30;
 const ShareBody = z.object({ enabled: z.boolean(), right: z.enum(["viewer", "editor"]).optional(), regenerate: z.boolean().optional() });
 const JoinBody = z.object({ name: z.string().trim().max(40).optional(), guestId: z.string().regex(/^g_[A-Za-z0-9_-]{6,16}$/).optional() });
 const StateBody = z.object({ objects: z.array(BoardObject).max(5000) });
@@ -76,6 +80,7 @@ const publicUser = (u: UserRec) => ({
 });
 const publicBoard = (b: BoardRec) => ({
   id: b.id, name: b.name, objects: b.objects, viewport: b.viewport, createdAt: b.createdAt, updatedAt: b.updatedAt,
+  favorite: !!b.favorite, folder: b.folder ?? "", deletedAt: b.deletedAt ?? 0,
 });
 
 export interface ApiConfig {
@@ -269,7 +274,7 @@ export function createApi(store: Store, config: ApiConfig) {
     // ----- share links (open to anyone who has the secret link) -----
     if (seg[0] === "share" && seg[1]) {
       const board = await store.findBoardByShareToken(seg[1]);
-      if (!board?.share?.enabled) throw fail(404, "not_found", "This link is not active.");
+      if (!board?.share?.enabled || board.deletedAt) throw fail(404, "not_found", "This link is not active.");
       if (method === "GET" && !seg[2]) return json(200, { board: { id: board.id, name: board.name }, right: board.share.right });
       // The current content of the board, for someone who opened the link (or for the screen that saves it back).
       if (seg[2] === "state" && method === "GET") return json(200, { objects: board.objects });
@@ -298,7 +303,12 @@ export function createApi(store: Store, config: ApiConfig) {
       const id = seg[1];
 
       if (!id && method === "GET") {
-        return json(200, { boards: (await store.listBoards(user.id)).map(publicBoard) });
+        // boards that have been in the trash for 30 days are removed for good
+        const limit = Date.now() - TRASH_DAYS * 86400_000;
+        const all = await store.listBoards(user.id);
+        const old = all.filter((b) => b.deletedAt && b.deletedAt < limit);
+        for (const b of old) await store.deleteBoard(b.id);
+        return json(200, { boards: all.filter((b) => !old.includes(b)).map(publicBoard) });
       }
       if (!id && method === "POST") {
         const body = parse(CreateBody, req.body);
@@ -322,9 +332,21 @@ export function createApi(store: Store, config: ApiConfig) {
           return json(200, { updatedAt });
         }
         if (method === "PATCH") {
-          const { name } = parse(RenameBody, req.body);
-          await store.updateBoard(id, { name, updatedAt: Date.now() });
-          return json(200, { name });
+          const body = parse(PatchBody, req.body);
+          const patch: Partial<BoardRec> = {};
+          if (body.name !== undefined) {
+            patch.name = body.name;
+            patch.updatedAt = Date.now();
+          }
+          if (body.favorite !== undefined) patch.favorite = body.favorite;
+          if (body.folder !== undefined) patch.folder = body.folder;
+          if (body.trashed !== undefined) {
+            patch.deletedAt = body.trashed ? Date.now() : 0;
+            if (body.trashed && board.share?.enabled) patch.share = { ...board.share, enabled: false }; // a trashed board is no longer public
+          }
+          await store.updateBoard(id, patch);
+          const now = { ...board, ...patch };
+          return json(200, { name: now.name, favorite: !!now.favorite, folder: now.folder ?? "", deletedAt: now.deletedAt ?? 0 });
         }
         if (method === "DELETE") {
           await store.deleteBoard(id);
@@ -373,7 +395,8 @@ export function createApi(store: Store, config: ApiConfig) {
       if (id && seg[2] === "duplicate" && method === "POST") {
         const src = await ownedBoard(id, user);
         const now = Date.now();
-        const copy: BoardRec = { ...src, id: nanoid(12), name: `${src.name} copy`.slice(0, 100), createdAt: now, updatedAt: now };
+        // (the copy is a new board: no share link of its own yet, not starred, not in the trash)
+        const copy: BoardRec = { ...src, id: nanoid(12), name: `${src.name} copy`.slice(0, 100), share: undefined, favorite: false, deletedAt: 0, createdAt: now, updatedAt: now };
         await store.insertBoard(copy);
         return json(201, { board: publicBoard(copy) });
       }
