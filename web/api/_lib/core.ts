@@ -7,6 +7,7 @@ import { SESSION_DAYS, createAblyToken, createToken, hashPassword, readToken, ve
 import { createHash, randomBytes } from "node:crypto";
 import type { GoogleProfile } from "./google.js";
 import type { SendMail } from "./mail.js";
+import { addActivity, addNotification, atLeast, findMentioned, MAX_INVITES, MAX_MEMBERS, roleOf, type BoardRole } from "./collab.js";
 
 export const COOKIE = "sb_session";
 const MAX_BOARD_BYTES = 3_000_000; // Vercel allows 4.5 MB per request; stay below it
@@ -57,6 +58,8 @@ const PatchBody = z
   .object({ name: Name.optional(), favorite: z.boolean().optional(), folder: z.string().trim().max(40).optional(), trashed: z.boolean().optional() })
   .refine((b) => Object.keys(b).length > 0, "Nothing to change");
 export const TRASH_DAYS = 30;
+const InviteBody = z.object({ email: z.string().trim().toLowerCase().email().max(200), role: z.enum(["editor", "viewer"]) });
+const MentionBody = z.object({ handles: z.array(z.string().max(60)).min(1).max(10), text: z.string().trim().max(500) });
 const ShareBody = z.object({ enabled: z.boolean(), right: z.enum(["viewer", "editor"]).optional(), regenerate: z.boolean().optional() });
 const JoinBody = z.object({ name: z.string().trim().max(40).optional(), guestId: z.string().regex(/^g_[A-Za-z0-9_-]{6,16}$/).optional() });
 const StateBody = z.object({ objects: z.array(BoardObject).max(5000) });
@@ -117,11 +120,39 @@ export function createApi(store: Store, config: ApiConfig) {
     if (!u) throw fail(401, "unauthorized", "Sign in to continue.");
     return u;
   }
-  // A board that is not yours looks exactly like a board that does not exist.
-  async function ownedBoard(id: string, user: UserRec): Promise<BoardRec> {
-    const b = await store.getBoard(id);
-    if (!b || b.ownerId !== user.id) throw fail(404, "not_found", "Board not found.");
-    return b;
+  // A board you may open: yours, or one somebody shared with you. `min` is the least right the action needs.
+  async function accessBoard(id: string, user: UserRec, min: BoardRole): Promise<{ board: BoardRec; role: BoardRole }> {
+    const board = await store.getBoard(id);
+    const role = board ? roleOf(board, user.id) : null;
+    if (!board || !role) throw fail(404, "not_found", "Board not found.");
+    if (!atLeast(role, min)) throw fail(403, "forbidden", min === "owner" ? "Only the owner can do this." : "You can only view this board.");
+    return { board, role };
+  }
+  const log = (board: BoardRec, by: string, text: string) => store.updateBoard(board.id, { activity: addActivity(board.activity, by, text) });
+  const notify = async (userId: string, text: string, boardId?: string) => {
+    const u = await store.findUserById(userId);
+    if (u) await store.updateUser(userId, { notifications: addNotification(u.notifications, { id: nanoid(10), at: Date.now(), text: text.slice(0, 240), boardId }) });
+  };
+  const mailTo = async (to: string, subject: string, text: string): Promise<boolean> => {
+    if (!config.sendMail) return false;
+    try {
+      await config.sendMail({ to, subject, text });
+      return true;
+    } catch {
+      return false; // the invitation still counts; e-mail is a bonus
+    }
+  };
+  // the people list of one board, shaped for the People panel (e-mail addresses and pending invites are for the owner only)
+  async function peopleOf(board: BoardRec, role: BoardRole) {
+    const ids = [board.ownerId, ...(board.members ?? []).map((m) => m.userId)];
+    const users = new Map((await store.findUsersByIds(ids)).map((u) => [u.id, u]));
+    const owner = users.get(board.ownerId);
+    return {
+      you: role,
+      owner: { id: board.ownerId, name: owner?.name ?? "Owner" },
+      members: (board.members ?? []).map((m) => ({ userId: m.userId, name: users.get(m.userId)?.name ?? "Someone", email: role === "owner" ? users.get(m.userId)?.email : undefined, role: m.role })),
+      invites: role === "owner" ? (board.invites ?? []).map((i) => ({ email: i.email, role: i.role })) : [],
+    };
   }
   const checkSize = (objects: unknown[]) => {
     if (JSON.stringify(objects).length > MAX_BOARD_BYTES) throw fail(413, "too_large", "This board is too large to save.");
@@ -297,6 +328,19 @@ export function createApi(store: Store, config: ApiConfig) {
       }
     }
 
+    // ----- notifications -----
+    if (seg[0] === "notifications") {
+      const user = await requireUser(req);
+      if (method === "GET" && !seg[1]) {
+        const list = user.notifications ?? [];
+        return json(200, { notifications: list, unread: list.filter((n) => !n.read).length });
+      }
+      if (method === "POST" && seg[1] === "read") {
+        await store.updateUser(user.id, { notifications: (user.notifications ?? []).map((n) => ({ ...n, read: true })) });
+        return json(200, { ok: true });
+      }
+    }
+
     // ----- boards -----
     if (seg[0] === "boards") {
       const user = await requireUser(req);
@@ -308,7 +352,19 @@ export function createApi(store: Store, config: ApiConfig) {
         const all = await store.listBoards(user.id);
         const old = all.filter((b) => b.deletedAt && b.deletedAt < limit);
         for (const b of old) await store.deleteBoard(b.id);
-        return json(200, { boards: all.filter((b) => !old.includes(b)).map(publicBoard) });
+        // pending e-mail invitations for this address become real memberships now that the person has an account
+        for (const b of await store.findBoardsByInvite(user.email)) {
+          const inv = b.invites?.find((i) => i.email === user.email);
+          if (!inv || b.ownerId === user.id) continue;
+          const members = [...(b.members ?? []).filter((m) => m.userId !== user.id), { userId: user.id, role: inv.role, addedAt: Date.now() }];
+          await store.updateBoard(b.id, { members, invites: (b.invites ?? []).filter((i) => i.email !== user.email), activity: addActivity(b.activity, user.name, `${user.name} joined as ${inv.role}`) });
+        }
+        const shared = (await store.listSharedBoards(user.id)).filter((b) => !b.deletedAt);
+        const owners = new Map((await store.findUsersByIds([...new Set(shared.map((b) => b.ownerId))])).map((u) => [u.id, u.name]));
+        return json(200, {
+          boards: all.filter((b) => !old.includes(b)).map(publicBoard),
+          shared: shared.map((b) => ({ ...publicBoard(b), role: roleOf(b, user.id), ownerName: owners.get(b.ownerId) ?? "Someone" })),
+        });
       }
       if (!id && method === "POST") {
         const body = parse(CreateBody, req.body);
@@ -322,8 +378,8 @@ export function createApi(store: Store, config: ApiConfig) {
         return json(201, { board: publicBoard(board) });
       }
       if (id && !seg[2]) {
-        const board = await ownedBoard(id, user);
-        if (method === "GET") return json(200, { board: publicBoard(board) });
+        const { board, role } = await accessBoard(id, user, method === "GET" ? "viewer" : method === "PUT" ? "editor" : "owner");
+        if (method === "GET") return json(200, { board: { ...publicBoard(board), role } });
         if (method === "PUT") {
           const body = parse(SaveBody, req.body);
           checkSize(body.objects);
@@ -337,11 +393,13 @@ export function createApi(store: Store, config: ApiConfig) {
           if (body.name !== undefined) {
             patch.name = body.name;
             patch.updatedAt = Date.now();
+            patch.activity = addActivity(board.activity, user.name, `${user.name} renamed the board to "${body.name}"`);
           }
           if (body.favorite !== undefined) patch.favorite = body.favorite;
           if (body.folder !== undefined) patch.folder = body.folder;
           if (body.trashed !== undefined) {
             patch.deletedAt = body.trashed ? Date.now() : 0;
+            patch.activity = addActivity(patch.activity ?? board.activity, user.name, body.trashed ? `${user.name} moved the board to the trash` : `${user.name} restored the board`);
             if (body.trashed && board.share?.enabled) patch.share = { ...board.share, enabled: false }; // a trashed board is no longer public
           }
           await store.updateBoard(id, patch);
@@ -354,11 +412,12 @@ export function createApi(store: Store, config: ApiConfig) {
         }
       }
       if (id && seg[2] === "join" && method === "POST") {
-        const board = await ownedBoard(id, user);
-        return joinResponse(board, user.id, user.name, "owner");
+        const { board, role } = await accessBoard(id, user, "viewer");
+        if (board.deletedAt && role !== "owner") throw fail(404, "not_found", "Board not found.");
+        return joinResponse(board, user.id, user.name, role);
       }
       if (id && seg[2] === "share") {
-        const board = await ownedBoard(id, user);
+        const { board } = await accessBoard(id, user, "owner");
         if (method === "GET") return json(200, { share: board.share ?? null });
         if (method === "PUT") {
           const body = parse(ShareBody, req.body);
@@ -370,12 +429,12 @@ export function createApi(store: Store, config: ApiConfig) {
             // a new secret on first enable, or when the owner asks to cancel the old link
             token: !old || body.regenerate ? nanoid(24) : old.token,
           };
-          await store.updateBoard(id, { share });
+          await store.updateBoard(id, { share, activity: addActivity(board.activity, user.name, body.enabled ? `${user.name} turned the share link on (${share.right === "editor" ? "can edit" : "can view"})` : `${user.name} turned the share link off`) });
           return json(200, { share });
         }
       }
       if (id && seg[2] === "versions") {
-        await ownedBoard(id, user);
+        const { board: vb } = await accessBoard(id, user, method === "POST" ? "editor" : "viewer");
         const list = await store.getVersions(id);
         const summaries = (l: typeof list) => l.map((v) => ({ id: v.id, at: v.at, label: v.label, count: v.objects.length })).reverse(); // newest first
         if (!seg[3] && method === "GET") return json(200, { versions: summaries(list) });
@@ -384,6 +443,7 @@ export function createApi(store: Store, config: ApiConfig) {
           checkSize(body.objects);
           const next = addVersion(list, { id: nanoid(10), at: Date.now(), label: body.label || "Saved version", objects: body.objects });
           await store.setVersions(id, next);
+          await log(vb, user.name, `${user.name} saved a version${body.label ? ` "${body.label}"` : ""}`);
           return json(201, { versions: summaries(next) });
         }
         if (seg[3] && method === "GET") {
@@ -392,11 +452,76 @@ export function createApi(store: Store, config: ApiConfig) {
           return json(200, { objects: v.objects });
         }
       }
+      // ----- people: members, invitations, activity, mentions -----
+      if (id && seg[2] === "members") {
+        const { board, role } = await accessBoard(id, user, "viewer");
+        if (!seg[3] && method === "GET") return json(200, await peopleOf(board, role));
+        if (!seg[3] && method === "PUT") {
+          if (role !== "owner") throw fail(403, "forbidden", "Only the owner can invite people.");
+          const { email, role: newRole } = parse(InviteBody, req.body);
+          if (email === user.email) throw fail(400, "invalid_input", "That is your own address.");
+          const target = await store.findUserByEmail(email);
+          const link = config.appUrl ? `${config.appUrl}/#/board/${board.id}` : "";
+          let emailed = false;
+          if (target) {
+            if ((board.members?.length ?? 0) >= MAX_MEMBERS && !board.members?.some((m) => m.userId === target.id)) throw fail(400, "limit", `A board can have up to ${MAX_MEMBERS} people.`);
+            const had = board.members?.find((m) => m.userId === target.id);
+            const members = [...(board.members ?? []).filter((m) => m.userId !== target.id), { userId: target.id, role: newRole, addedAt: had?.addedAt ?? Date.now() }];
+            board.members = members;
+            board.invites = (board.invites ?? []).filter((i) => i.email !== email);
+            board.activity = addActivity(board.activity, user.name, had ? `${user.name} changed ${target.name} to ${newRole}` : `${user.name} added ${target.name} as ${newRole}`);
+            await store.updateBoard(id, { members, invites: board.invites, activity: board.activity });
+            if (!had) {
+              await notify(target.id, `${user.name} invited you to "${board.name}" (${newRole === "editor" ? "can edit" : "can view"})`, board.id);
+              emailed = await mailTo(email, `${user.name} invited you to a Sketchboard board`, `${user.name} invited you to "${board.name}" as ${newRole === "editor" ? "an editor" : "a viewer"}.\n\n${link ? `Open it: ${link}\n` : "Sign in to Sketchboard to open it.\n"}`);
+            }
+          } else {
+            const others = (board.invites ?? []).filter((i) => i.email !== email);
+            if (others.length >= MAX_INVITES) throw fail(400, "limit", `A board can have up to ${MAX_INVITES} pending invitations.`);
+            const invites = [...others, { email, role: newRole, at: Date.now() }];
+            board.invites = invites;
+            board.activity = addActivity(board.activity, user.name, `${user.name} invited ${email} as ${newRole}`);
+            await store.updateBoard(id, { invites, activity: board.activity });
+            emailed = await mailTo(email, `${user.name} invited you to a Sketchboard board`, `${user.name} invited you to "${board.name}" as ${newRole === "editor" ? "an editor" : "a viewer"}.\n\nCreate a free account with this e-mail address and the board will be waiting for you.\n${config.appUrl ? `\n${config.appUrl}\n` : ""}`);
+          }
+          return json(200, { ...(await peopleOf(board, "owner")), emailed });
+        }
+        if (seg[3] && method === "DELETE") {
+          const targetId = seg[3];
+          if (role !== "owner" && targetId !== user.id) throw fail(403, "forbidden", "Only the owner can remove people.");
+          const gone = board.members?.find((m) => m.userId === targetId);
+          if (!gone) throw fail(404, "not_found", "That person is not on this board.");
+          const who = (await store.findUserById(targetId))?.name ?? "Someone";
+          board.members = (board.members ?? []).filter((m) => m.userId !== targetId);
+          board.activity = addActivity(board.activity, user.name, targetId === user.id ? `${user.name} left the board` : `${user.name} removed ${who}`);
+          await store.updateBoard(id, { members: board.members, activity: board.activity });
+          return json(200, await peopleOf(board, role));
+        }
+      }
+      if (id && seg[2] === "invites" && seg[3] && method === "DELETE") {
+        const { board } = await accessBoard(id, user, "owner");
+        const email = decodeURIComponent(seg[3]).toLowerCase();
+        await store.updateBoard(id, { invites: (board.invites ?? []).filter((i) => i.email !== email) });
+        board.invites = (board.invites ?? []).filter((i) => i.email !== email);
+        return json(200, await peopleOf(board, "owner"));
+      }
+      if (id && seg[2] === "activity" && method === "GET") {
+        const { board } = await accessBoard(id, user, "viewer");
+        return json(200, { activity: board.activity ?? [] });
+      }
+      if (id && seg[2] === "mentions" && method === "POST") {
+        const { board } = await accessBoard(id, user, "editor");
+        const { handles, text } = parse(MentionBody, req.body);
+        const people = (await store.findUsersByIds([board.ownerId, ...(board.members ?? []).map((m) => m.userId)])).map((u) => ({ id: u.id, name: u.name }));
+        const hit = findMentioned(handles, people).filter((uid) => uid !== user.id);
+        for (const uid of hit) await notify(uid, `${user.name} mentioned you in "${board.name}": ${text}`, board.id);
+        return json(200, { notified: hit.length });
+      }
       if (id && seg[2] === "duplicate" && method === "POST") {
-        const src = await ownedBoard(id, user);
+        const { board: src } = await accessBoard(id, user, "owner");
         const now = Date.now();
         // (the copy is a new board: no share link of its own yet, not starred, not in the trash)
-        const copy: BoardRec = { ...src, id: nanoid(12), name: `${src.name} copy`.slice(0, 100), share: undefined, favorite: false, deletedAt: 0, createdAt: now, updatedAt: now };
+        const copy: BoardRec = { ...src, id: nanoid(12), name: `${src.name} copy`.slice(0, 100), share: undefined, members: [], invites: [], activity: [], favorite: false, deletedAt: 0, createdAt: now, updatedAt: now };
         await store.insertBoard(copy);
         return json(201, { board: publicBoard(copy) });
       }

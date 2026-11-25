@@ -146,10 +146,30 @@ test("two screens: edits cross in both directions, the board loads from the serv
   assert.deepEqual(s.peers.map((p) => p.name), ["Bob"]);
   assert.deepEqual(s.cursors[peer.id] && { x: s.cursors[peer.id].x, y: s.cursors[peer.id].y }, { x: 10, y: 20 });
 
+  // follow mode: Bob tells where he looks; garbage is ignored; when I follow him and he leaves, I stop following
+  await peerCur.publish("v", { cx: 100, cy: 50, s: 2 });
+  await peerCur.publish("v", { cx: "x", cy: 1, s: 1 });
+  await peerCur.publish("v", { cx: 1, cy: 1, s: -3 });
+  await wait();
+  assert.deepEqual(
+    useBoard.getState().views[peer.id] && { cx: useBoard.getState().views[peer.id].cx, cy: useBoard.getState().views[peer.id].cy, s: useBoard.getState().views[peer.id].s },
+    { cx: 100, cy: 50, s: 2 },
+  );
+  useBoard.getState().follow(peer.id);
+  const { applyFollowView } = await import("../store");
+  applyFollowView(useBoard.getState().views[peer.id], 1000, 600);
+  assert.equal(useBoard.getState().following, peer.id); // applying his view does not end following
+  assert.deepEqual(useBoard.getState().viewport, { scale: 2, x: 300, y: 200 });
+  useBoard.getState().setViewport({ scale: 1, x: 0, y: 0 }); // I move myself: stop following
+  assert.equal(useBoard.getState().following, null);
+  useBoard.getState().follow(peer.id);
+
   // when Bob leaves, his pointer and avatar go away
   peer.close();
   await wait();
   assert.deepEqual(useBoard.getState().peers, []);
+  assert.equal(useBoard.getState().following, null);
+  assert.deepEqual(useBoard.getState().views, {});
 
   conn.stopRealtime();
   assert.equal(useBoard.getState().connection, "off");

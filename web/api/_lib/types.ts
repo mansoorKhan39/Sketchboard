@@ -10,6 +10,7 @@ export interface UserRec {
   resetHash?: string; // sha-256 of the password-reset link's secret (the secret itself is only in the e-mail)
   resetExp?: number; // when that link stops working
   resetSentAt?: number; // when the last one was sent (so nobody can use us to flood an inbox)
+  notifications?: NotificationRec[]; // newest first, at most 50
   createdAt: number;
 }
 
@@ -25,6 +26,29 @@ export interface ShareSettings {
   right: "viewer" | "editor";
 }
 
+export interface NotificationRec {
+  id: string;
+  at: number;
+  text: string;
+  boardId?: string; // the board to open when it is clicked
+  read: boolean;
+}
+export interface MemberRec {
+  userId: string;
+  role: "editor" | "viewer";
+  addedAt: number;
+}
+export interface InviteRec {
+  email: string; // lower-case; becomes a member when someone signs up or in with this address
+  role: "editor" | "viewer";
+  at: number;
+}
+export interface ActivityRec {
+  at: number;
+  by: string; // the name of the person
+  text: string;
+}
+
 export interface BoardRec {
   id: string;
   ownerId: string;
@@ -34,6 +58,9 @@ export interface BoardRec {
   share?: ShareSettings;
   favorite?: boolean; // starred by the owner
   folder?: string; // name of the folder the owner put it in ("" or missing = no folder)
+  members?: MemberRec[];
+  invites?: InviteRec[];
+  activity?: ActivityRec[]; // newest first, at most 100 (member changes, renames, trash, saved versions)
   deletedAt?: number; // when it was moved to the trash (0 or missing = not in the trash)
   createdAt: number;
   updatedAt: number;

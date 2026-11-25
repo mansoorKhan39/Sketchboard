@@ -43,6 +43,12 @@ export interface CursorMsg {
   x: number;
   y: number;
 }
+// Where somebody is looking (for "follow"): the board point in the middle of their screen, and their zoom.
+export interface ViewMsg {
+  cx: number;
+  cy: number;
+  s: number;
+}
 // What each person publishes about themselves with "who is here" (Ably presence).
 export interface PresenceData {
   name: string;

@@ -17,11 +17,13 @@ import ProfileScreen from "./components/ProfileScreen";
 import Logo from "./components/Logo";
 import { useAuth } from "./auth";
 import { useShortcuts } from "./useShortcuts";
+import { useFollow } from "./useFollow";
 import { useBoard } from "./store";
 import { isEmbed, useUI } from "./ui";
 
 function BoardScreen() {
   const spaceDown = useShortcuts();
+  useFollow();
   const presenting = useBoard((s) => s.present !== null);
   const [embed] = useState(isEmbed);
   if (embed) {

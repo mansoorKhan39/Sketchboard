@@ -15,6 +15,33 @@ export interface AuthConfig {
   google: string | null; // Google client id when "Continue with Google" is available
   resetEmail: boolean; // true when "Forgot password" can send e-mail
 }
+export type BoardRole = "owner" | "editor" | "viewer";
+export interface Person {
+  userId: string;
+  name: string;
+  email?: string; // only the owner sees these
+  role: "editor" | "viewer";
+}
+export interface People {
+  you: BoardRole;
+  owner: { id: string; name: string };
+  members: Person[];
+  invites: { email: string; role: "editor" | "viewer" }[]; // only the owner sees these
+  emailed?: boolean; // after an invitation: did an e-mail go out?
+}
+export interface ActivityItem {
+  at: number;
+  by: string;
+  text: string;
+}
+export interface NotificationItem {
+  id: string;
+  at: number;
+  text: string;
+  boardId?: string;
+  read: boolean;
+}
+
 export interface CloudBoard {
   id: string;
   name: string;
@@ -25,6 +52,8 @@ export interface CloudBoard {
   favorite?: boolean;
   folder?: string;
   deletedAt?: number; // moved to the trash at this time (0 = not in the trash)
+  role?: BoardRole; // your right on this board (missing = owner)
+  ownerName?: string; // only on boards shared with you
 }
 
 export interface VersionInfo {
@@ -86,7 +115,15 @@ export const api = {
   updateProfile: (name: string) => call<{ user: User }>("PATCH", "/auth/me", { name }),
   changePassword: (current: string | undefined, password: string) => call<{ user: User }>("POST", "/auth/password", { current, password }),
   deleteAccount: (confirm: string) => call<void>("DELETE", "/auth/me", { confirm }),
-  listBoards: () => call<{ boards: CloudBoard[] }>("GET", "/boards"),
+  listBoards: () => call<{ boards: CloudBoard[]; shared: CloudBoard[] }>("GET", "/boards"),
+  getPeople: (id: string) => call<People>("GET", `/boards/${id}/members`),
+  invite: (id: string, email: string, role: "editor" | "viewer") => call<People>("PUT", `/boards/${id}/members`, { email, role }),
+  removeMember: (id: string, userId: string) => call<People>("DELETE", `/boards/${id}/members/${userId}`),
+  cancelInvite: (id: string, email: string) => call<People>("DELETE", `/boards/${id}/invites/${encodeURIComponent(email)}`),
+  getActivity: (id: string) => call<{ activity: ActivityItem[] }>("GET", `/boards/${id}/activity`),
+  mention: (id: string, handles: string[], text: string) => call<{ notified: number }>("POST", `/boards/${id}/mentions`, { handles, text }),
+  notifications: () => call<{ notifications: NotificationItem[]; unread: number }>("GET", "/notifications"),
+  markNotificationsRead: () => call<{ ok: true }>("POST", "/notifications/read"),
   getBoard: (id: string) => call<{ board: CloudBoard }>("GET", `/boards/${id}`),
   createBoard: (name: string, objects: BoardObject[]) => call<{ board: CloudBoard }>("POST", "/boards", { name, objects }),
   saveBoard: (id: string, objects: BoardObject[], viewport: Viewport) => call<{ updatedAt: number }>("PUT", `/boards/${id}`, { objects, viewport }),

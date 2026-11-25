@@ -3,6 +3,8 @@ import { useUI } from "../ui";
 import { flushSave, useBoard } from "../store";
 import ThemeToggle from "./ThemeToggle";
 import ShareDialog from "./ShareDialog";
+import PeoplePanel from "./PeoplePanel";
+import Bell from "./Bell";
 import Logo from "./Logo";
 import { exportJson, exportPdf, exportPng, exportSvg } from "../exportPng";
 import HistoryPanel from "./HistoryPanel";
@@ -17,9 +19,13 @@ export default function TopBar() {
   const peers = useBoard((s) => s.peers);
   const notice = useBoard((s) => s.notice);
   const hasFrames = useBoard((s) => s.objects.some((o) => o.type === "frame"));
-  const canRename = mode === "owned" && role !== "viewer";
+  const canRename = mode === "owned" && useBoard.getState().access === "owner";
   const [name, setName] = useState(storedName);
   const [share, setShare] = useState(false);
+  const access = useBoard((s) => s.access);
+  const following = useBoard((s) => s.following);
+  const follow = useBoard((s) => s.follow);
+  const followed = useBoard((s) => s.peers.find((p) => p.id === s.following));
   const [exportOpen, setExportOpen] = useState(false);
   const [history, setHistory] = useState(false);
   const shareRef = useRef<HTMLDivElement>(null);
@@ -99,18 +105,26 @@ export default function TopBar() {
       </div>
 
       <div className={card} ref={shareRef}>
+        {followed && (
+          <span data-testid="following" className="mr-1 whitespace-nowrap rounded-lg bg-brand-soft px-2 py-1 text-xs font-medium">
+            Following {followed.name}
+          </span>
+        )}
         {peers.length > 0 && (
           <div className="mr-1 flex -space-x-2 pl-1" data-testid="peers">
             {peers.slice(0, 4).map((p) => (
-              <span
+              <button
                 key={p.id}
-                title={p.name}
+                title={following === p.id ? `Following ${p.name} (click to stop)` : `Follow ${p.name}`}
+                aria-label={following === p.id ? `Stop following ${p.name}` : `Follow ${p.name}`}
+                aria-pressed={following === p.id}
                 data-testid="peer-avatar"
-                className="flex h-7 w-7 items-center justify-center rounded-full border-2 border-surface text-xs font-semibold text-white"
+                onClick={() => follow(following === p.id ? null : p.id)}
+                className={`flex h-7 w-7 items-center justify-center rounded-full border-2 text-xs font-semibold text-white ${following === p.id ? "border-brand ring-2 ring-brand" : "border-surface"}`}
                 style={{ background: p.color }}
               >
                 {p.name.trim().charAt(0).toUpperCase() || "?"}
-              </span>
+              </button>
             ))}
             {peers.length > 4 && (
               <span className="flex h-7 w-7 items-center justify-center rounded-full border-2 border-surface bg-sunken text-[11px] font-semibold">
@@ -182,6 +196,7 @@ export default function TopBar() {
             </div>
           )}
         </div>
+        <Bell />
         <ThemeToggle />
         {role === "viewer" && <span data-testid="viewer-badge" className="rounded-lg bg-sunken px-2.5 py-1 text-xs font-medium text-muted">View only</span>}
         {mode === "owned" && (
@@ -190,13 +205,13 @@ export default function TopBar() {
             data-testid="share"
             className="h-9 rounded-lg bg-brand px-4 text-sm font-medium text-white transition hover:bg-brand-strong"
           >
-            Share
+            {access === "owner" ? "Share" : "People"}
           </button>
         )}
         {history && <HistoryPanel onClose={() => setHistory(false)} />}
         {share && (
           <div className="absolute right-0 top-14 w-80 rounded-xl border border-line bg-surface p-4 shadow-float" data-testid="share-panel">
-            <ShareDialog />
+            {access === "owner" ? <ShareDialog /> : <PeoplePanel />}
           </div>
         )}
       </div>

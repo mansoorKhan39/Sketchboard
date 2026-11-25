@@ -36,6 +36,8 @@ export function createMongoStore(uri: string, dbName: string): Store {
         users.createIndex({ resetHash: 1 }, { sparse: true }),
         boards.createIndex({ ownerId: 1, updatedAt: -1 }),
         boards.createIndex({ "share.token": 1 }, { sparse: true }),
+        boards.createIndex({ "members.userId": 1 }, { sparse: true }),
+        boards.createIndex({ "invites.email": 1 }, { sparse: true }),
       ]);
       await indexes;
       return { users, boards, versions };
@@ -93,6 +95,18 @@ export function createMongoStore(uri: string, dbName: string): Store {
     async listBoards(ownerId) {
       const { boards } = await cols();
       return (await boards.find({ ownerId }).sort({ updatedAt: -1 }).limit(100).toArray()).map(toBoard);
+    },
+    async listSharedBoards(userId) {
+      const { boards } = await cols();
+      return (await boards.find({ "members.userId": userId }).sort({ updatedAt: -1 }).limit(100).toArray()).map(toBoard);
+    },
+    async findBoardsByInvite(email) {
+      const { boards } = await cols();
+      return (await boards.find({ "invites.email": email }).limit(50).toArray()).map(toBoard);
+    },
+    async findUsersByIds(ids) {
+      const { users } = await cols();
+      return ids.length ? (await users.find({ _id: { $in: ids } }).toArray()).map(toUser) : [];
     },
     async getBoard(id) {
       const { boards } = await cols();

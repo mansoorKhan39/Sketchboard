@@ -3,6 +3,7 @@ import { api, ApiError, type ShareSettings } from "../api";
 import { useAuth } from "../auth";
 import { useBoard } from "../store";
 import { useUI } from "../ui";
+import PeoplePanel from "./PeoplePanel";
 
 // The panel that opens from the Share button. Only the owner of a saved (account) board can change sharing.
 export default function ShareDialog() {
@@ -134,6 +135,9 @@ export default function ShareDialog() {
           )}
           {error && <p role="alert" className="mt-3 text-sm text-red-600">{error}</p>}
           <p className="mt-3 text-xs text-muted">People who already have the board open keep their access until they reload.</p>
+          <div className="mt-4 border-t border-line pt-4">
+            <PeoplePanel />
+          </div>
         </>
       )}
     </div>

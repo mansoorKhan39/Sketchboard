@@ -8,6 +8,8 @@ import BoardThumb from "./BoardThumb";
 import ThemeToggle from "./ThemeToggle";
 import AccountMenu from "./AccountMenu";
 import Logo from "./Logo";
+import Bell from "./Bell";
+import { api } from "../api";
 import Landing from "./Landing";
 
 const timeAgo = (t: number) => {
@@ -42,6 +44,8 @@ function BoardCard({ board, folders, onOpen, onChange }: { board: BoardSummary; 
   const [renaming, setRenaming] = useState(false);
   const [moving, setMoving] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const me = useAuth((s) => s.user);
+  const shared = !!board.role && board.role !== "owner";
   const ref = useRef<HTMLDivElement>(null);
 
   // close the menu when clicking anywhere else
@@ -73,7 +77,7 @@ function BoardCard({ board, folders, onOpen, onChange }: { board: BoardSummary; 
           <BoardThumb objects={objects} />
         </div>
       </button>
-      {!trashed && (
+      {!trashed && !shared && (
         <button
           onClick={() => update({ favorite: !board.favorite })}
           aria-label={board.favorite ? `Remove ${board.name} from favourites` : `Add ${board.name} to favourites`}
@@ -86,7 +90,7 @@ function BoardCard({ board, folders, onOpen, onChange }: { board: BoardSummary; 
       )}
       <div className="mt-2 flex items-start justify-between gap-2">
         <div className="min-w-0">
-          {renaming ? (
+          {renaming && !shared ? (
             <input
               autoFocus
               defaultValue={board.name}
@@ -105,8 +109,10 @@ function BoardCard({ board, folders, onOpen, onChange }: { board: BoardSummary; 
             <div className="truncate text-sm font-medium">{board.name}</div>
           )}
           <div className="truncate text-xs text-muted">
-            {trashed ? `In trash since ${timeAgo(board.deletedAt!)}` : `Edited ${timeAgo(board.updatedAt)}`}
-            {board.folder ? ` · ${board.folder}` : ""}
+            {shared
+              ? `Shared by ${board.ownerName ?? "someone"} · ${board.role === "editor" ? "can edit" : "can view"}`
+              : trashed ? `In trash since ${timeAgo(board.deletedAt!)}` : `Edited ${timeAgo(board.updatedAt)}`}
+            {!shared && board.folder ? ` · ${board.folder}` : ""}
           </div>
         </div>
         <button
@@ -120,7 +126,19 @@ function BoardCard({ board, folders, onOpen, onChange }: { board: BoardSummary; 
       </div>
       {menu && (
         <div className="absolute right-0 top-[calc(100%-1.5rem)] z-30 w-52 rounded-xl border border-line bg-surface p-1 shadow-float">
-          {trashed ? (
+          {shared ? (
+            <button
+              className={`${item} text-red-600`}
+              data-testid="board-leave"
+              onClick={async () => {
+                setMenu(false);
+                if (me) await api.removeMember(board.id, me.id).catch(() => {});
+                onChange();
+              }}
+            >
+              Leave board
+            </button>
+          ) : trashed ? (
             <>
               <button className={item} data-testid="board-restore" onClick={() => update({ trashed: false })}>Restore</button>
               <button
@@ -236,17 +254,24 @@ export default function Dashboard() {
     }
   };
 
+  const isShared = (b: BoardSummary) => !!b.role && b.role !== "owner";
   const live = boards.filter((b) => !b.deletedAt);
-  const trash = boards.filter((b) => !!b.deletedAt);
-  const folders = [...new Set(live.map((b) => b.folder).filter((f): f is string => !!f))].sort((a, b) => a.localeCompare(b));
+  const mine = live.filter((b) => !isShared(b));
+  const sharedWithMe = live.filter(isShared);
+  const trash = boards.filter((b) => !!b.deletedAt && !isShared(b));
+  const folders = [...new Set(mine.map((b) => b.folder).filter((f): f is string => !!f))].sort((a, b) => a.localeCompare(b));
   const q = query.trim().toLowerCase();
   const inView = (b: BoardSummary) =>
-    filter === "trash" ? !!b.deletedAt : !b.deletedAt && (filter === "all" || (filter === "favorites" ? !!b.favorite : b.folder === filter.slice(7)));
+    filter === "trash"
+      ? !!b.deletedAt && !isShared(b)
+      : !b.deletedAt &&
+        (filter === "all" || (filter === "shared" ? isShared(b) : !isShared(b) && (filter === "favorites" ? !!b.favorite : b.folder === filter.slice(7))));
   const shown = boards.filter((b) => inView(b) && (!q || b.name.toLowerCase().includes(q) || (b.folder ?? "").toLowerCase().includes(q)));
   // a folder that became empty (or a trash that was emptied) falls back to "All"
   useEffect(() => {
     if (filter.startsWith("folder:") && !folders.includes(filter.slice(7))) setFilter("all");
     if (filter === "trash" && !trash.length) setFilter("all");
+    if (filter === "shared" && !sharedWithMe.length) setFilter("all");
   }, [boards]); // eslint-disable-line react-hooks/exhaustive-deps
   const chip = (id: string, label: string, count?: number) => (
     <button
@@ -277,6 +302,7 @@ export default function Dashboard() {
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round"><path d="M12 5v14M5 12h14" /></svg>
             New board
           </button>
+          <Bell />
           <ThemeToggle />
           <AccountMenu />
         </div>
@@ -342,8 +368,9 @@ export default function Dashboard() {
           {boards.length > 0 && (
             <div className="mt-4 flex flex-wrap items-center gap-2" role="group" aria-label="Show boards">
               {chip("all", "All", live.length)}
-              {chip("favorites", "Favourites", live.filter((b) => b.favorite).length)}
-              {folders.map((f) => chip(`folder:${f}`, f, live.filter((b) => b.folder === f).length))}
+              {chip("favorites", "Favourites", mine.filter((b) => b.favorite).length)}
+              {sharedWithMe.length > 0 && chip("shared", "Shared with me", sharedWithMe.length)}
+              {folders.map((f) => chip(`folder:${f}`, f, mine.filter((b) => b.folder === f).length))}
               {trash.length > 0 && chip("trash", "Trash", trash.length)}
             </div>
           )}

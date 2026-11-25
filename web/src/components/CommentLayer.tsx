@@ -1,4 +1,6 @@
-import { useState } from "react";
+import { api } from "../api";
+import { extractHandles, handleFor } from "../mentions";
+import { useEffect, useState } from "react";
 import { useBoard } from "../store";
 import { useAuth } from "../auth";
 import { MAX_COMMENT_CHARS, MAX_THREAD, newMessage } from "../comments";
@@ -47,11 +49,22 @@ function Thread({ c }: { c: CommentObj }) {
   const userName = useAuth((s) => s.user?.name);
   const [text, setText] = useState("");
   const author = meName || userName || "Guest";
+  const boardId = useBoard((s) => (s.mode === "owned" ? s.boardId : null));
+  const [names, setNames] = useState<string[]>([]);
+  // people on this board, offered as @mention chips (only for saved boards)
+  useEffect(() => {
+    if (!boardId || !userName) return;
+    api.getPeople(boardId).then((p) => setNames([p.owner.name, ...p.members.map((m) => m.name)].filter((n) => n !== userName))).catch(() => {});
+  }, [boardId, userName]);
 
   const post = () => {
     const t = text.trim().slice(0, MAX_COMMENT_CHARS);
     if (!t || c.thread.length >= MAX_THREAD) return;
     updateObjects({ [c.id]: { thread: [...c.thread, newMessage(author, t)] } });
+    // @mentions: tell the people named (best effort; only for saved boards you own or share)
+    const s = useBoard.getState();
+    const handles = extractHandles(t);
+    if (handles.length && s.mode === "owned" && s.boardId) void api.mention(s.boardId, handles, t.slice(0, 120)).catch(() => {});
     setText("");
   };
   const remove = () => {
@@ -97,6 +110,15 @@ function Thread({ c }: { c: CommentObj }) {
             }}
             className="mt-2 w-full resize-none rounded-lg border border-line bg-canvas p-2 text-sm outline-none focus:border-brand"
           />
+          {names.length > 0 && (
+            <div className="mt-1.5 flex flex-wrap gap-1" data-testid="mention-chips">
+              {names.slice(0, 6).map((n) => (
+                <button key={n} type="button" onClick={() => setText((t) => `${t}${t && !/\s$/.test(t) ? " " : ""}@${handleFor(n, names)} `)} className="rounded-full border border-line px-2 py-0.5 text-xs text-muted hover:border-brand hover:text-ink">
+                  @{handleFor(n, names)}
+                </button>
+              ))}
+            </div>
+          )}
           <div className="mt-2 flex items-center justify-between">
             <div className="flex gap-1">
               <button

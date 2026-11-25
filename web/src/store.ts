@@ -18,6 +18,7 @@ export type Connection = "off" | "connecting" | "live" | "offline";
 
 interface BoardState {
   boardId: string | null; // which saved board is open (null = dashboard)
+  access: "owner" | "editor" | "viewer"; // your right on an account board (owner for your own boards)
   mode: "owned" | "shared"; // "shared" = opened through someone's share link
   sharedToken: string | null;
   loaded: boolean; // the board's content is on screen (for share links: the room has sent it)
@@ -27,6 +28,8 @@ interface BoardState {
   me: Peer | null;
   peers: Peer[]; // the other people on the board
   cursors: Record<string, { x: number; y: number; at: number }>; // by peer id, in board coordinates
+  views: Record<string, { cx: number; cy: number; s: number; at: number }>; // where each person is looking
+  following: string | null; // peer id whose view this screen copies
   notice: string; // a short message about the connection ("Slow down a little.")
   boardName: string;
   saveStatus: "saved" | "saving" | "error";
@@ -50,6 +53,7 @@ interface BoardState {
   renameBoard: (name: string) => void;
   setTool: (t: Tool) => void;
   setViewport: (v: Viewport) => void;
+  follow: (peerId: string | null) => void;
   zoomBy: (factor: number, cx: number, cy: number) => void;
   select: (ids: string[]) => void;
   setEditing: (id: string | null) => void;
@@ -129,6 +133,7 @@ const guestName = () => {
 export const useBoard = create<BoardState>((set, get) => ({
   boardId: null,
   mode: "owned",
+  access: "owner",
   sharedToken: null,
   loaded: false,
   connection: "off",
@@ -136,6 +141,8 @@ export const useBoard = create<BoardState>((set, get) => ({
   me: null,
   peers: [],
   cursors: {},
+  views: {},
+  following: null,
   notice: "",
   boardName: "",
   saveStatus: "saved",
@@ -165,9 +172,10 @@ export const useBoard = create<BoardState>((set, get) => ({
     set({
       boardId: id,
       mode: "owned",
+      access: data.role ?? "owner",
       sharedToken: null,
       loaded: true,
-      role: "solo",
+      role: data.role === "viewer" ? "viewer" : "solo", // a viewer must not be able to edit even before the live room answers
       boardName: data.name,
       saveStatus: "saved",
       objects: data.objects,
@@ -203,6 +211,7 @@ export const useBoard = create<BoardState>((set, get) => ({
     set({
       boardId: info.boardId,
       mode: "shared",
+      access: "viewer",
       sharedToken: token,
       loaded: false, // the room sends the content
       role: info.role,
@@ -268,13 +277,15 @@ export const useBoard = create<BoardState>((set, get) => ({
   },
 
   setTool: (tool) => set((s) => (canEditNow(s) || tool === "select" || tool === "hand" ? { tool, editingId: null } : s)),
-  setViewport: (viewport) => set({ viewport }),
+  // Moving the view yourself ends "follow" (the follow code sets viewport through applyFollowView instead).
+  setViewport: (viewport) => set(followApplying ? { viewport } : { viewport, following: null }),
+  follow: (following) => set({ following }),
   zoomBy: (factor, cx, cy) =>
     set((s) => {
       const scale = clampScale(s.viewport.scale * factor);
       const k = scale / s.viewport.scale;
       // keep the world point under (cx, cy) fixed on screen
-      return { viewport: { scale, x: cx - (cx - s.viewport.x) * k, y: cy - (cy - s.viewport.y) * k } };
+      return { viewport: { scale, x: cx - (cx - s.viewport.x) * k, y: cy - (cy - s.viewport.y) * k }, following: null };
     }),
   select: (selectedIds) => set({ selectedIds }),
   setEditing: (editingId) => set((s) => (canEditNow(s) ? { editingId, editingCell: null } : s)),
@@ -493,6 +504,17 @@ export const newId = () => nanoid(10);
 // Saving: a moment after the last change, send the board to wherever it lives (this browser or the server).
 // Saves are queued one after another, so an older save can never arrive after a newer one.
 let timer: ReturnType<typeof setTimeout> | undefined;
+// Copy somebody else's view (follow mode): centre my screen on the point they are looking at, at their zoom.
+let followApplying = false;
+export function applyFollowView(v: { cx: number; cy: number; s: number }, width: number, height: number) {
+  followApplying = true;
+  try {
+    useBoard.getState().setViewport({ scale: v.s, x: width / 2 - v.cx * v.s, y: height / 2 - v.cy * v.s });
+  } finally {
+    followApplying = false;
+  }
+}
+
 let queue: Promise<void> = Promise.resolve();
 
 export function flushSave(): Promise<void> {

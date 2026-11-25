@@ -17,6 +17,8 @@ export interface BoardSummary {
   favorite?: boolean;
   folder?: string;
   deletedAt?: number; // set while the board is in the trash
+  role?: "owner" | "editor" | "viewer"; // your right (missing = owner); boards shared with you have editor / viewer
+  ownerName?: string; // for boards shared with you
   objects: BoardObject[]; // needed for the dashboard thumbnails
 }
 export type BoardPatch = { name?: string; favorite?: boolean; folder?: string; trashed?: boolean };
@@ -88,16 +90,17 @@ export const localRepo: Repo = {
   },
 };
 
-const summary = (b: { id: string; name: string; createdAt: number; updatedAt: number; objects: BoardObject[]; favorite?: boolean; folder?: string; deletedAt?: number }): BoardSummary => ({
+const summary = (b: { id: string; name: string; createdAt: number; updatedAt: number; objects: BoardObject[]; favorite?: boolean; folder?: string; deletedAt?: number; role?: "owner" | "editor" | "viewer"; ownerName?: string }): BoardSummary => ({
   id: b.id, name: b.name, createdAt: b.createdAt, updatedAt: b.updatedAt, objects: b.objects,
-  favorite: !!b.favorite, folder: b.folder ?? "", deletedAt: b.deletedAt ?? 0,
+  favorite: !!b.favorite, folder: b.folder ?? "", deletedAt: b.deletedAt ?? 0, role: b.role ?? "owner", ownerName: b.ownerName,
 });
 
 export const cloudRepo: Repo = {
   kind: "cloud",
   saveDelay: 1200, // be kind to the server: one save per pause, not one per click
   async list() {
-    return (await api.listBoards()).boards.map(summary);
+    const r = await api.listBoards();
+    return [...r.boards.map(summary), ...(r.shared ?? []).map(summary)];
   },
   async get(id) {
     try {

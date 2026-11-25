@@ -3,7 +3,7 @@ import { ApiError, type JoinInfo } from "../api";
 import { flushSave, useBoard } from "../store";
 import type { BoardObject } from "../types";
 import { compact, createAssembler, toMessages } from "./chunks";
-import type { ChunkMsg, CursorMsg, EditMsg, Op, PresenceData } from "./protocol";
+import type { ChunkMsg, CursorMsg, EditMsg, Op, PresenceData, ViewMsg } from "./protocol";
 import { checkOps } from "./validate";
 
 // Live collaboration through Ably (ably.com), a service built for bad networks: if a WebSocket is blocked or keeps
@@ -190,6 +190,13 @@ async function connect(gen: number) {
       set({ cursors: { ...useBoard.getState().cursors, [m.connectionId]: { x: d.x, y: d.y, at: Date.now() } } });
     }),
   );
+  quiet(
+    cur.subscribe("v", (m) => {
+      const d = m.data as ViewMsg | undefined;
+      if (gen !== generation || !m.connectionId || m.connectionId === myId || !isFiniteNum(d?.cx) || !isFiniteNum(d?.cy) || !isFiniteNum(d?.s) || d!.s <= 0 || d!.s > 100) return;
+      set({ views: { ...useBoard.getState().views, [m.connectionId]: { cx: d!.cx, cy: d!.cy, s: d!.s, at: Date.now() } } });
+    }),
+  );
   quiet(cur.presence.subscribe(() => void refreshPeers(gen)));
 }
 
@@ -243,6 +250,7 @@ function onRemote(gen: number, ops: unknown) {
   store.applyRemoteOps(ops as Op[]);
 }
 
+const isFiniteNum = (n: unknown): n is number => typeof n === "number" && Number.isFinite(n);
 const quiet = (p: unknown) => void (p as Promise<unknown> | undefined)?.catch?.(() => {});
 
 async function refreshPeers(gen: number) {
@@ -262,7 +270,14 @@ async function refreshPeers(gen: number) {
       }));
     const ids = new Set(peers.map((p) => p.id));
     const cursors = useBoard.getState().cursors;
-    set({ peers, cursors: Object.fromEntries(Object.entries(cursors).filter(([id]) => ids.has(id))) });
+    const views = useBoard.getState().views;
+    const following = useBoard.getState().following;
+    set({
+      peers,
+      cursors: Object.fromEntries(Object.entries(cursors).filter(([id]) => ids.has(id))),
+      views: Object.fromEntries(Object.entries(views).filter(([id]) => ids.has(id))),
+      following: following && !ids.has(following) ? null : following, // the person left: stop following
+    });
   } catch {
     /* the next presence change tries again */
   }
@@ -313,6 +328,15 @@ function flushQueue() {
 }
 
 let lastCursor = 0;
+// Tell the others where I am looking (they may be following me). Called a few times a second at most.
+let lastView = 0;
+export function sendView(cx: number, cy: number, scale: number) {
+  const now = Date.now();
+  if (now - lastView < 120 || !cur || useBoard.getState().connection !== "live") return;
+  lastView = now;
+  void cur.publish("v", { cx, cy, s: scale } satisfies ViewMsg).catch(() => {});
+}
+
 export function sendCursor(x: number, y: number) {
   const now = Date.now();
   if (now - lastCursor < 100 || !cur || useBoard.getState().connection !== "live") return;

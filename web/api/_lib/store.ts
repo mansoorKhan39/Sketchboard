@@ -15,6 +15,9 @@ export interface Store {
   /** Removes the person and everything they own (boards and their saved versions). */
   deleteUser(id: string): Promise<void>;
   listBoards(ownerId: string): Promise<BoardRec[]>;
+  listSharedBoards(userId: string): Promise<BoardRec[]>; // boards where this person is a member
+  findBoardsByInvite(email: string): Promise<BoardRec[]>; // boards with a pending invitation for this address
+  findUsersByIds(ids: string[]): Promise<UserRec[]>;
   getBoard(id: string): Promise<BoardRec | null>;
   findBoardByShareToken(token: string): Promise<BoardRec | null>;
   insertBoard(board: BoardRec): Promise<void>;
@@ -64,6 +67,15 @@ export class MemoryStore implements Store {
   }
   async listBoards(ownerId: string) {
     return this.boards.filter((b) => b.ownerId === ownerId).sort((a, b) => b.updatedAt - a.updatedAt);
+  }
+  async listSharedBoards(userId: string) {
+    return this.boards.filter((b) => b.members?.some((m) => m.userId === userId)).sort((a, b) => b.updatedAt - a.updatedAt);
+  }
+  async findBoardsByInvite(email: string) {
+    return this.boards.filter((b) => b.invites?.some((i) => i.email === email));
+  }
+  async findUsersByIds(ids: string[]) {
+    return this.users.filter((u) => ids.includes(u.id));
   }
   async getBoard(id: string) {
     return this.boards.find((b) => b.id === id) ?? null;

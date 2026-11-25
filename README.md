@@ -105,3 +105,13 @@ can differ slightly between screens because there is no single server putting ed
 - **Export** (top bar): PNG, **PDF**, **SVG** (sharp at any size) and **Board file** (`.sketchboard.json`). On the dashboard **Import** reads such a file into a new board; damaged items are skipped and counted.
 - **Embed:** in Share, a "Can view" link also gives an `<iframe>` code. Embedded boards (`#/s/<token>?embed=1`) show only the canvas, a zoom control and an "Open in Sketchboard" link.
 - A board in the trash cannot be opened through its public link, and a duplicate never copies the share link of the original.
+
+## Stage 20a: working together
+
+- **People panel** (Share button for the owner, "People" for members): invite by e-mail with "Can edit" or "Can view", change rights, remove people, cancel pending invitations, leave a board, and see recent activity. An invitation to an address without an account is kept and claimed when that person signs up.
+- **Shared with me**: dashboard filter for boards others shared with you. Shared cards have no star/folder/trash; the only menu item is "Leave board".
+- **Rights**: owner (everything), editor (edit, comment, mention), viewer (look only). The server checks this on every call (404 for strangers, 403 for too low a right).
+- **Notifications**: bell in the dashboard and board bar (checks every 45 s). Invitations and @mentions appear there.
+- **@mentions**: type `@Ali` in a comment (or tap a name chip). The first name works when it is unique on the board; otherwise use the full name without spaces.
+- **Follow**: click a person's avatar in the board bar; your screen copies their view until you pan or zoom yourself, or they leave.
+- No new environment variable. With `BREVO_API_KEY` set, invitations also arrive as e-mails (`APP_URL` makes the links correct).
