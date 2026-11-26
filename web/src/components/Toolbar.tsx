@@ -17,6 +17,7 @@ const TOOLS: { id: Tool; label: string; key: string; icon: ReactNode }[] = [
   { id: "shape", label: "Shape", key: "S", icon: icon(<><rect x="3" y="11" width="9" height="9" rx="1" /><circle cx="16" cy="8" r="5" /></>) },
   { id: "table", label: "Table", key: "B", icon: icon(<><rect x="3" y="4" width="18" height="16" rx="1.500" /><path d="M3 10h18M3 15h18M9 4v16M15 4v16" /></>) },
   { id: "pen", label: "Pen", key: "P", icon: icon(<path d="M4 20l4-1 11-11-3-3L5 16zM14 6l3 3" />) },
+  { id: "eraser", label: "Eraser (drag over drawings)", key: "E", icon: icon(<path d="M9 20h11M5.500 15.500l9-9a2 2 0 012.800 0l1.700 1.700a2 2 0 010 2.800L11 20H8l-2.500-2.500a2 2 0 010-2z" />) },
   { id: "connector", label: "Connector", key: "L", icon: icon(<><circle cx="5" cy="18" r="2" /><circle cx="19" cy="6" r="2" /><path d="M7 18h4a4 4 0 004-4V8" /></>) },
   { id: "frame", label: "Frame", key: "F", icon: icon(<path d="M7 3v18M17 3v18M3 7h18M3 17h18" />) },
   { id: "comment", label: "Comment", key: "C", icon: icon(<path d="M4 5h16v11H9l-5 4z" />) },

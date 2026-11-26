@@ -19,6 +19,7 @@ const badExtras = (r: Record<string, unknown>) =>
   ("locked" in r && typeof r.locked !== "boolean") ||
   ("group" in r && (typeof r.group !== "string" || r.group.length > 64)) ||
   (["bold", "italic", "underline", "bullets"] as const).some((k) => k in r && typeof r[k] !== "boolean") ||
+  ("alpha" in r && (!isNum(r.alpha) || r.alpha < 0.05 || r.alpha > 1)) ||
   ("spans" in r && !validSpans(r.spans)) ||
   ("align" in r && r.align !== "left" && r.align !== "center" && r.align !== "right") ||
   ("fs" in r && (!isNum(r.fs) || (r.fs !== 0 && (r.fs < 6 || r.fs > 200))));

@@ -9,6 +9,7 @@ import CommentLayer from "./components/CommentLayer";
 import { ExtrasBar, ReactionLayer, TimerBar, VoteLayer } from "./components/Extras";
 import Presenter from "./components/Presenter";
 import PeerCursors from "./components/PeerCursors";
+import PenBar from "./components/PenBar";
 import Dashboard from "./components/Dashboard";
 import AuthScreen from "./components/AuthScreen";
 import ForgotScreen from "./components/ForgotScreen";
@@ -55,6 +56,7 @@ function BoardScreen() {
     >
       <Canvas spaceDown={spaceDown} />
       <PeerCursors />
+      <PenBar />
       <ReactionLayer />
       <TimerBar />
       {presenting ? (

@@ -1,9 +1,10 @@
+import { MAX_DRAFT_POINTS, validDraftChunk } from "../pen";
 import { nanoid } from "nanoid";
 import { ApiError, type JoinInfo } from "../api";
 import { flushSave, useBoard } from "../store";
 import type { BoardObject } from "../types";
 import { compact, createAssembler, toMessages } from "./chunks";
-import type { ChunkMsg, CursorMsg, EditMsg, Op, PresenceData, ViewMsg } from "./protocol";
+import type { ChunkMsg, CursorMsg, EditMsg, Op, PresenceData, ViewMsg, DraftMsg } from "./protocol";
 import { checkOps } from "./validate";
 
 // Live collaboration through Ably (ably.com), a service built for bad networks: if a WebSocket is blocked or keeps
@@ -88,7 +89,7 @@ export const isActive = () => session !== null;
 export function startRealtime(boardId: string, fetchJoin: (previousClientId?: string) => Promise<JoinInfo>, fetchState: () => Promise<BoardObject[]>) {
   stopRealtime();
   session = { boardId, fetchJoin, fetchState, join: null, everLive: false, ready: false, syncing: false, buffer: [] };
-  set({ connection: "connecting", peers: [], cursors: {}, me: null, notice: "" });
+  set({ connection: "connecting", peers: [], cursors: {}, drafts: {}, me: null, notice: "" });
   const gen = generation;
   giveUpTimer = setTimeout(() => {
     if (session && !session.everLive) giveUp(gen, "Could not connect to this board. (timed out)", "connect timeout");
@@ -112,7 +113,7 @@ export function stopRealtime() {
   } catch {
     /* ignore */
   }
-  if (useBoard.getState().connection !== "off") set({ connection: "off", peers: [], cursors: {}, me: null });
+  if (useBoard.getState().connection !== "off") set({ connection: "off", peers: [], cursors: {}, drafts: {}, me: null });
 }
 
 async function connect(gen: number) {
@@ -188,6 +189,21 @@ async function connect(gen: number) {
       const d = m.data as CursorMsg | undefined;
       if (gen !== generation || !m.connectionId || m.connectionId === myId || typeof d?.x !== "number" || typeof d?.y !== "number") return;
       set({ cursors: { ...useBoard.getState().cursors, [m.connectionId]: { x: d.x, y: d.y, at: Date.now() } } });
+    }),
+  );
+  quiet(
+    cur.subscribe("d", (m) => {
+      const d = m.data;
+      if (gen !== generation || !m.connectionId || m.connectionId === myId || !validDraftChunk(d)) return;
+      const drafts = { ...useBoard.getState().drafts };
+      if (d.done) {
+        delete drafts[m.connectionId];
+      } else {
+        const old = drafts[m.connectionId]?.id === d.id ? drafts[m.connectionId] : undefined;
+        const points = [...(old?.points ?? []), ...d.p].slice(-MAX_DRAFT_POINTS);
+        drafts[m.connectionId] = { id: d.id, color: d.c ?? old?.color ?? "#1F2937", width: d.w ?? old?.width ?? 3, alpha: d.a ?? old?.alpha ?? 1, points, at: Date.now() };
+      }
+      set({ drafts });
     }),
   );
   quiet(
@@ -276,6 +292,7 @@ async function refreshPeers(gen: number) {
       peers,
       cursors: Object.fromEntries(Object.entries(cursors).filter(([id]) => ids.has(id))),
       views: Object.fromEntries(Object.entries(views).filter(([id]) => ids.has(id))),
+      drafts: Object.fromEntries(Object.entries(useBoard.getState().drafts).filter(([id]) => ids.has(id))),
       following: following && !ids.has(following) ? null : following, // the person left: stop following
     });
   } catch {
@@ -335,6 +352,30 @@ export function sendView(cx: number, cy: number, scale: number) {
   if (now - lastView < 120 || !cur || useBoard.getState().connection !== "live") return;
   lastView = now;
   void cur.publish("v", { cx, cy, s: scale } satisfies ViewMsg).catch(() => {});
+}
+
+// Live drawing: send the points of the stroke being drawn a few times a second (and the rest, with done = true, at the end).
+let draftId = "";
+let draftPending: number[] = [];
+let draftLast = 0;
+export function liveStroke(id: string, look: { c: string; w: number; a: number }, newPoints: number[], done = false) {
+  if (!cur || useBoard.getState().connection !== "live") return;
+  if (draftId !== id) {
+    draftId = id;
+    draftPending = [];
+  }
+  draftPending.push(...newPoints);
+  const now = Date.now();
+  if (!done && now - draftLast < 80) return; // the rest goes with the next message
+  draftLast = now;
+  const msgs: DraftMsg[] = [];
+  // a message may carry at most 400 numbers
+  do {
+    const part = draftPending.splice(0, 400);
+    msgs.push({ id, p: part, c: look.c, w: look.w, a: look.a });
+  } while (draftPending.length > 0);
+  if (done) msgs.push({ id, p: [], done: true });
+  for (const m of msgs) void cur.publish("d", m).catch(() => {});
 }
 
 export function sendCursor(x: number, y: number) {

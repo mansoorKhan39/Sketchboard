@@ -43,6 +43,16 @@ export interface CursorMsg {
   x: number;
   y: number;
 }
+// A stroke somebody is drawing right now: the new points since the last message (live drawing). The finished stroke
+// arrives as a normal edit; `done` says the live copy can go.
+export interface DraftMsg {
+  id: string;
+  p: number[];
+  c?: string;
+  w?: number;
+  a?: number;
+  done?: boolean;
+}
 // Where somebody is looking (for "follow"): the board point in the middle of their screen, and their zoom.
 export interface ViewMsg {
   cx: number;

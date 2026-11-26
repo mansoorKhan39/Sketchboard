@@ -46,3 +46,6 @@ Alice and Bob: create a team, add Bob, board in team, Bob edits but cannot trash
 
 ### e2e-rich.cjs (Stage 21)
 Guest mode. Select single words in a sticky, make them bold/italic/red, check spans, re-open, undo/redo, reload, whole-object bold baking.
+
+### e2e-pen.cjs (Stage 22)
+Guest mode. Pen colour/width, highlighter, Shift line, dot, eraser as one undo step, saved pen settings, stroke thickness.

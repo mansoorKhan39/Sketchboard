@@ -55,6 +55,7 @@ export default function ObjectNode({ obj, draggable }: Props) {
   const editCell = useBoard((s) => s.editingCell);
 
   const theme = useUI((s) => s.theme);
+  const erasingNow = useUI((s) => s.erasing.includes(obj.id)); // the eraser has touched this stroke
   const privateOn = useBoard((s) => isPrivate(s.objects));
   const userId = useAuth((s) => s.user?.id);
   const masked = obj.type === "sticky" && isHiddenFrom(obj, voterId(userId), privateOn);
@@ -316,6 +317,7 @@ export default function ObjectNode({ obj, draggable }: Props) {
           points={obj.points}
           stroke={inkFor(obj.color, theme)}
           strokeWidth={obj.lineWidth}
+          opacity={erasingNow ? 0.2 : obj.alpha ?? 1}
           lineCap="round"
           lineJoin="round"
           tension={0.4}

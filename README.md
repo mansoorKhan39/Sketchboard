@@ -134,3 +134,13 @@ can differ slightly between screens because there is no single server putting ed
 - Editing: `components/RichEditor.tsx` is a `contentEditable` box over the object. `src/richdom.ts` turns text+spans into HTML and reads the typed HTML back. Whole-object Bold/Italic/Underline set before are moved into the words when you start editing, so nothing looks different.
 - Plain objects (no `spans`) are drawn exactly as before. Table cells are still plain text.
 - Known limits: pasting keeps only plain text; colour choices are the six ink colours; links are still found from the whole text (no per-word link yet).
+
+## Stage 22: drawing tools
+
+- **Pen options** (bar at the bottom while the Pen or Eraser tool is active): Pen / Highlighter / Eraser, 7 colours, 4 thicknesses. Remembered in this browser (`sketchboard.pen`). Press **P** for the pen, **E** for the eraser.
+- **Highlighter**: same colour, at least 14 wide, 40 % see-through (`alpha` on the stroke; `src/pen.ts` `strokeParams`).
+- **Shift** while drawing makes a straight line. A single click makes a dot. Slow hands make crowded points; they are thinned when the stroke is saved (`thin`).
+- **Eraser**: drag over drawings; touched strokes fade at once and are removed together on release, as **one undo step** (`strokesTouched`, store `removeObjects`). It removes strokes whole (no partial erasing yet). Locked strokes are skipped. Rotated and moved strokes are handled.
+- **Live drawing**: while someone draws, the others see the line grow (channel `cur:<id>`, message `d`, `liveStroke` in `realtime/connection.ts`, pieces of at most 400 numbers, at most every 80 ms). The finished stroke arrives as a normal edit and the live copy disappears. Pieces from other people are checked by `validDraftChunk`.
+- A selected stroke can change colour and thickness in the properties bar.
+- Not done: pressure-sensitive (variable width) lines, partial erasing, handwriting-to-text (needs the AI step).

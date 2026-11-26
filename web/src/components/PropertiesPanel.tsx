@@ -2,6 +2,7 @@ import { VoteButtons } from "./Extras";
 import { voterId } from "../extras";
 import { useAuth } from "../auth";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { PEN_WIDTHS } from "../pen";
 import { richColor, richCommand, richState, RICH_TYPES } from "../richdom";
 import { SHAPE_KINDS } from "../shapes";
 import { addCol, addRow, removeCol, removeRow } from "../table";
@@ -206,7 +207,22 @@ export default function PropertiesPanel() {
         </>
       )}
       {allType && first.type === "stroke" && (
-        <Swatches colors={INK_COLORS} value={first.color} onPick={(c) => patchAll((o) => (o.type === "stroke" ? { color: c } : null))} />
+        <>
+          <Swatches colors={INK_COLORS} value={first.color} onPick={(c) => patchAll((o) => (o.type === "stroke" ? { color: c } : null))} />
+          <div className="flex rounded-lg bg-sunken p-0.5" role="group" aria-label="Line thickness">
+            {PEN_WIDTHS.map((w) => (
+              <button
+                key={w}
+                data-testid={`stroke-width-${w}`}
+                aria-pressed={first.lineWidth === w}
+                onClick={() => patchAll((o) => (o.type === "stroke" ? { lineWidth: w } : null))}
+                className={`rounded-md px-2 py-1 text-xs font-medium ${first.lineWidth === w ? "bg-surface text-ink shadow-sm" : "text-muted hover:text-ink"}`}
+              >
+                {w}
+              </button>
+            ))}
+          </div>
+        </>
       )}
       {allType && first.type === "text" && (
         <>

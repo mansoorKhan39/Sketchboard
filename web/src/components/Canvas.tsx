@@ -2,13 +2,14 @@ import { isOverlay } from "../kinds";
 import { voterId } from "../extras";
 import { useAuth } from "../auth";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Stage, Layer, Line, Rect, Transformer } from "react-konva";
+import { Stage, Layer, Line, Rect, Circle, Transformer } from "react-konva";
 import type Konva from "konva";
 import { useBoard, newId } from "../store";
 import type { BoardObject, Connector, Placeable, ShapeKind, Stroke } from "../types";
 import { INK_COLORS, SHAPE_FILLS, STICKY_COLORS, inkFor } from "../constants";
 import { useUI } from "../ui";
-import { sendCursor } from "../realtime/connection";
+import { liveStroke, sendCursor } from "../realtime/connection";
+import { straight, strokeParams, strokesTouched, thin } from "../pen";
 import ObjectNode from "./ObjectNode";
 import ConnectorNode from "./ConnectorNode";
 import { centerOf } from "../geometry";
@@ -56,6 +57,14 @@ export default function Canvas({ spaceDown }: { spaceDown: boolean }) {
   const [panning, setPanning] = useState(false);
   const [draft, setDraft] = useState<number[] | null>(null); // pen stroke being drawn (world coords)
   const drawing = useRef(false);
+  const drawId = useRef("");
+  const shiftDraw = useRef(false); // Shift held while drawing: a straight line
+  const erasingRef = useRef(false);
+  const lastErase = useRef<{ x: number; y: number } | null>(null);
+  const erasedIds = useRef<Set<string>>(new Set());
+  const [eraserAt, setEraserAt] = useState<{ x: number; y: number } | null>(null);
+  const pen = useUI((s) => s.pen);
+  const drafts = useBoard((s) => s.drafts);
   // marquee (drag-select box) and connector being dragged — refs hold the truth, state triggers redraw
   const marqueeRef = useRef<{ x1: number; y1: number; x2: number; y2: number } | null>(null);
   const [marquee, setMarquee] = useState<{ x1: number; y1: number; x2: number; y2: number } | null>(null);
@@ -242,7 +251,18 @@ export default function Canvas({ spaceDown }: { spaceDown: boolean }) {
     }
     if (tool === "pen") {
       drawing.current = true;
+      drawId.current = newId();
+      shiftDraw.current = !!(e.evt as MouseEvent).shiftKey;
       setDraft([x, y]);
+      const { lineWidth, alpha } = strokeParams(useUI.getState().pen);
+      liveStroke(drawId.current, { c: useUI.getState().pen.color, w: lineWidth, a: alpha }, [x, y]);
+      return;
+    }
+    if (tool === "eraser") {
+      erasingRef.current = true;
+      lastErase.current = null;
+      erasedIds.current = new Set();
+      eraseTo(x, y);
       return;
     }
     if (tool === "sticky") {
@@ -293,12 +313,35 @@ export default function Canvas({ spaceDown }: { spaceDown: boolean }) {
     }
   };
 
-  const onStageMove = () => {
+  // The eraser: strokes it touches fade at once and are removed together when the button is released (one undo step).
+  const eraseTo = (x: number, y: number) => {
+    const radius = 10 / useBoard.getState().viewport.scale;
+    const from = lastErase.current ?? { x, y };
+    const steps = Math.max(1, Math.ceil(Math.hypot(x - from.x, y - from.y) / (radius / 2))); // fast moves must not jump over a line
+    const path: number[] = [];
+    for (let i = 1; i <= steps; i++) path.push(from.x + ((x - from.x) * i) / steps, from.y + ((y - from.y) * i) / steps);
+    lastErase.current = { x, y };
+    const strokes = useBoard.getState().objects.filter((o): o is Stroke => o.type === "stroke" && !o.locked && !erasedIds.current.has(o.id));
+    const hit = strokesTouched(strokes, path, radius);
+    if (hit.length) {
+      for (const id of hit) erasedIds.current.add(id);
+      useUI.getState().setErasing([...erasedIds.current]);
+    }
+  };
+
+  const onStageMove = (e?: Konva.KonvaEventObject<MouseEvent | TouchEvent>) => {
     const pos = stageRef.current?.getRelativePointerPosition();
     if (pos) sendCursor(pos.x, pos.y); // let other people see where my pointer is (throttled inside)
-    if (!drawing.current && !marqueeRef.current && !linkRef.current) return;
+    if (tool === "eraser" && pos) setEraserAt({ x: pos.x, y: pos.y });
+    if (!drawing.current && !marqueeRef.current && !linkRef.current && !erasingRef.current) return;
     const { x, y } = world();
-    if (drawing.current) setDraft((d) => (d ? [...d, x, y] : d));
+    if (erasingRef.current) eraseTo(x, y);
+    if (drawing.current) {
+      shiftDraw.current = !!(e?.evt as MouseEvent | undefined)?.shiftKey;
+      setDraft((d) => (d ? [...d, x, y] : d));
+      const { lineWidth, alpha } = strokeParams(useUI.getState().pen);
+      liveStroke(drawId.current, { c: useUI.getState().pen.color, w: lineWidth, a: alpha }, [x, y]);
+    }
     if (marqueeRef.current) {
       marqueeRef.current = { ...marqueeRef.current, x2: x, y2: y };
       setMarquee(marqueeRef.current);
@@ -349,20 +392,33 @@ export default function Canvas({ spaceDown }: { spaceDown: boolean }) {
   const onStageUp = () => {
     finishMarquee();
     finishLink();
+    if (erasingRef.current) {
+      erasingRef.current = false;
+      lastErase.current = null;
+      useBoard.getState().removeObjects([...erasedIds.current]);
+      erasedIds.current = new Set();
+      useUI.getState().setErasing([]);
+      return;
+    }
     if (!drawing.current) return;
     drawing.current = false;
-    if (draft && draft.length >= 4) {
+    liveStroke(drawId.current, { c: pen.color, w: strokeParams(pen).lineWidth, a: strokeParams(pen).alpha }, [], true); // the live copy can go
+    if (draft && draft.length >= 2) {
+      // a click makes a dot; Shift makes a straight line; slow hands make crowded points, which are thinned
+      let pts = draft.length === 2 ? [draft[0], draft[1], draft[0] + 0.01, draft[1]] : shiftDraw.current ? straight(draft) : thin(draft, 1 / useBoard.getState().viewport.scale);
       // store points relative to the top-left of the stroke so it can move like any other object
       let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-      for (let i = 0; i < draft.length; i += 2) {
-        minX = Math.min(minX, draft[i]); maxX = Math.max(maxX, draft[i]);
-        minY = Math.min(minY, draft[i + 1]); maxY = Math.max(maxY, draft[i + 1]);
+      for (let i = 0; i < pts.length; i += 2) {
+        minX = Math.min(minX, pts[i]); maxX = Math.max(maxX, pts[i]);
+        minY = Math.min(minY, pts[i + 1]); maxY = Math.max(maxY, pts[i + 1]);
       }
-      const points = draft.map((v, i) => (i % 2 === 0 ? v - minX : v - minY));
+      const points = pts.map((v, i) => (i % 2 === 0 ? v - minX : v - minY));
+      const { lineWidth, alpha } = strokeParams(pen);
       const o: Stroke = {
-        id: newId(), type: "stroke", x: minX, y: minY, width: maxX - minX, height: maxY - minY,
-        rotation: 0, points, color: INK_COLORS[0], lineWidth: 3,
+        id: drawId.current || newId(), type: "stroke", x: minX, y: minY, width: maxX - minX, height: maxY - minY,
+        rotation: 0, points, color: pen.color, lineWidth, ...(alpha < 1 ? { alpha } : {}),
       };
+      pts = [];
       addObject(o);
     }
     setDraft(null);
@@ -393,7 +449,7 @@ export default function Canvas({ spaceDown }: { spaceDown: boolean }) {
     updateObjects(patches);
   };
 
-  const cursor = panning ? "grabbing" : panMode ? "grab" : tool === "select" ? "default" : tool === "pen" ? "crosshair" : "copy";
+  const cursor = panning ? "grabbing" : panMode ? "grab" : tool === "select" ? "default" : tool === "pen" || tool === "eraser" ? "crosshair" : "copy";
 
   return (
     <div
@@ -457,7 +513,13 @@ export default function Canvas({ spaceDown }: { spaceDown: boolean }) {
             <Line points={[link.x1, link.y1, link.x2, link.y2]} stroke="#4F46E5" strokeWidth={2} dash={[6, 4]} listening={false} />
           )}
           {draft && (
-            <Line points={draft} stroke={inkFor(INK_COLORS[0], theme)} strokeWidth={3} lineCap="round" lineJoin="round" tension={0.4} listening={false} />
+            <Line points={shiftDraw.current ? straight(draft) : draft} stroke={inkFor(pen.color, theme)} strokeWidth={strokeParams(pen).lineWidth} opacity={strokeParams(pen).alpha} lineCap="round" lineJoin="round" tension={shiftDraw.current ? 0 : 0.4} listening={false} />
+          )}
+          {Object.entries(drafts).map(([peer, d]) => (
+            <Line key={peer} points={d.points} stroke={inkFor(d.color, theme)} strokeWidth={d.width} opacity={d.alpha} lineCap="round" lineJoin="round" tension={0.4} listening={false} />
+          ))}
+          {tool === "eraser" && eraserAt && (
+            <Circle x={eraserAt.x} y={eraserAt.y} radius={10 / viewport.scale} stroke="#F43F5E" strokeWidth={1.5 / viewport.scale} fill="rgba(244,63,94,0.12)" listening={false} />
           )}
           <Transformer
             ref={trRef}

@@ -1,5 +1,6 @@
 import type { Guide } from "./snapping";
 import { create } from "zustand";
+import { DEFAULT_PEN, PEN_COLORS, PEN_WIDTHS, type PenSettings } from "./pen";
 
 export type Theme = "light" | "dark";
 export type View =
@@ -14,6 +15,21 @@ export type View =
 
 const THEME_KEY = "sketchboard.theme";
 const NAV_KEY = "sketchboard.nav";
+const PEN_KEY = "sketchboard.pen";
+
+// The pen's colour, thickness and kind are remembered in this browser.
+function initialPen(): PenSettings {
+  try {
+    const p = JSON.parse(localStorage.getItem(PEN_KEY) ?? "{}");
+    return {
+      mode: p.mode === "highlighter" ? "highlighter" : "pen",
+      color: PEN_COLORS.includes(p.color) ? p.color : DEFAULT_PEN.color,
+      width: PEN_WIDTHS.includes(p.width) ? p.width : DEFAULT_PEN.width,
+    };
+  } catch {
+    return DEFAULT_PEN;
+  }
+}
 
 // Two small personal settings for moving around the board, remembered in this browser.
 export type WheelMode = "zoom" | "scroll";
@@ -67,6 +83,10 @@ interface UIState {
   snap: boolean; // dragged objects snap to the others (smart guides)
   grid: boolean; // dragged objects snap to a grid when nothing else is close
   guides: Guide[]; // guide lines shown while dragging (not saved)
+  pen: PenSettings;
+  setPen: (p: Partial<PenSettings>) => void;
+  erasing: string[]; // strokes the eraser has touched in the drag that is going on (shown faded, removed on release)
+  setErasing: (ids: string[]) => void;
   setSnap: (on: boolean) => void;
   setGrid: (on: boolean) => void;
   setGuides: (g: Guide[]) => void;
@@ -80,6 +100,14 @@ export const useUI = create<UIState>((set, get) => ({
   view: viewFromHash(),
   ...initialNav(),
   guides: [],
+  pen: initialPen(),
+  setPen: (p) => {
+    const pen = { ...useUI.getState().pen, ...p };
+    try { localStorage.setItem(PEN_KEY, JSON.stringify(pen)); } catch { /* storage blocked: the setting just is not remembered */ }
+    set({ pen });
+  },
+  erasing: [],
+  setErasing: (erasing) => set({ erasing }),
   setSnap: (snap) => {
     set({ snap });
     saveNav(get());

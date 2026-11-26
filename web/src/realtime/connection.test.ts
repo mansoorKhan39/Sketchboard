@@ -146,6 +146,27 @@ test("two screens: edits cross in both directions, the board loads from the serv
   assert.deepEqual(s.peers.map((p) => p.name), ["Bob"]);
   assert.deepEqual(s.cursors[peer.id] && { x: s.cursors[peer.id].x, y: s.cursors[peer.id].y }, { x: 10, y: 20 });
 
+  // live drawing: Bob's stroke appears while he draws (pieces are added up), garbage is ignored, and "done" removes it
+  await peerCur.publish("d", { id: "st1", p: [0, 0, 5, 5], c: "#E03131", w: 4, a: 1 });
+  await peerCur.publish("d", { id: "st1", p: [10, 10] });
+  await peerCur.publish("d", { id: "st1", p: [1, 2, 3], c: "#E03131" }); // odd number of values: refused
+  await peerCur.publish("d", { id: "st2", p: [1, 1], c: "red" }); // bad colour: refused
+  await wait();
+  const dr = useBoard.getState().drafts[peer.id];
+  assert.deepEqual(dr && { points: dr.points, color: dr.color, width: dr.width }, { points: [0, 0, 5, 5, 10, 10], color: "#E03131", width: 4 });
+  await peerCur.publish("d", { id: "st1", p: [], done: true });
+  await wait();
+  assert.equal(useBoard.getState().drafts[peer.id], undefined);
+  // my own drawing is sent in pieces: the first piece waits for nothing, the rest are batched, "done" flushes everything
+  const sentD: unknown[] = [];
+  peerCur.subscribe("d", (m) => sentD.push(m.data));
+  conn.liveStroke("mine", { c: "#2F9E44", w: 3, a: 1 }, [0, 0]);
+  conn.liveStroke("mine", { c: "#2F9E44", w: 3, a: 1 }, [1, 1]); // within 80 ms: kept back
+  conn.liveStroke("mine", { c: "#2F9E44", w: 3, a: 1 }, [2, 2], true);
+  await wait();
+  assert.deepEqual(sentD.map((d) => (d as { p: number[] }).p), [[0, 0], [1, 1, 2, 2], []]);
+  assert.equal((sentD[2] as { done?: boolean }).done, true);
+
   // follow mode: Bob tells where he looks; garbage is ignored; when I follow him and he leaves, I stop following
   await peerCur.publish("v", { cx: 100, cy: 50, s: 2 });
   await peerCur.publish("v", { cx: "x", cy: 1, s: 1 });

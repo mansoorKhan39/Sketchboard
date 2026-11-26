@@ -1,5 +1,5 @@
 // Object model — mirrors the Database Design document (shared fields + one shape per type).
-export type Tool = "select" | "sticky" | "shape" | "pen" | "text" | "connector" | "frame" | "comment" | "hand" | "table";
+export type Tool = "select" | "sticky" | "shape" | "pen" | "text" | "connector" | "frame" | "comment" | "hand" | "table" | "eraser";
 export type ShapeKind = "rect" | "ellipse" | "diamond" | "triangle" | "hexagon" | "star" | "arrow" | "speech" | "cloud" | "cylinder";
 
 import type { Span } from "./richtext";
@@ -44,6 +44,7 @@ export interface Stroke extends Base {
   points: number[]; // flat [x1,y1,x2,y2...] relative to (x,y)
   color: string;
   lineWidth: number;
+  alpha?: number; // see-through strokes (highlighter): 0.05 to 1, missing = 1
 }
 
 export interface TextObj extends Base {

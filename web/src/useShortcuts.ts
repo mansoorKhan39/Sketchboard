@@ -8,7 +8,7 @@ import { placeImages, viewCenter } from "./image";
 import { panNow, zoomStep, zoomToFit, zoomToScale, zoomToSelection } from "./navigation";
 import { arrowStep } from "./viewport";
 
-const KEY_TO_TOOL: Record<string, Tool> = { v: "select", h: "hand", n: "sticky", s: "shape", p: "pen", t: "text", l: "connector", f: "frame", c: "comment", b: "table" };
+const KEY_TO_TOOL: Record<string, Tool> = { v: "select", h: "hand", n: "sticky", s: "shape", p: "pen", e: "eraser", t: "text", l: "connector", f: "frame", c: "comment", b: "table" };
 
 // Registers all keyboard shortcuts from the UI/UX document. Returns whether Space is held (for panning).
 export function useShortcuts() {

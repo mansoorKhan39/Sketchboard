@@ -29,6 +29,7 @@ interface BoardState {
   peers: Peer[]; // the other people on the board
   cursors: Record<string, { x: number; y: number; at: number }>; // by peer id, in board coordinates
   views: Record<string, { cx: number; cy: number; s: number; at: number }>; // where each person is looking
+  drafts: Record<string, { id: string; color: string; width: number; alpha: number; points: number[]; at: number }>; // strokes other people are drawing right now
   following: string | null; // peer id whose view this screen copies
   notice: string; // a short message about the connection ("Slow down a little.")
   boardName: string;
@@ -62,6 +63,7 @@ interface BoardState {
   addObject: (o: BoardObject) => void;
   updateObjects: (patches: Record<string, Partial<BoardObject>>) => void;
   removeSelected: () => void;
+  removeObjects: (ids: string[]) => void; // one undo step
   alignSelected: (mode: AlignMode) => void;
   distributeSelected: (axis: "h" | "v") => void;
   groupSelected: () => void;
@@ -142,6 +144,7 @@ export const useBoard = create<BoardState>((set, get) => ({
   peers: [],
   cursors: {},
   views: {},
+  drafts: {},
   following: null,
   notice: "",
   boardName: "",
@@ -312,6 +315,13 @@ export const useBoard = create<BoardState>((set, get) => ({
         return { ...o, ...p } as BoardObject;
       });
       return changed ? withHistory(s, next) : s;
+    }),
+
+  removeObjects: (ids) =>
+    set((s) => {
+      if (!canEditNow(s) || !ids.length) return s;
+      const drop = new Set(ids);
+      return { ...withHistory(s, s.objects.filter((o) => !drop.has(o.id))), selectedIds: s.selectedIds.filter((i) => !drop.has(i)) };
     }),
 
   removeSelected: () =>
