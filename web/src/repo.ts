@@ -17,11 +17,13 @@ export interface BoardSummary {
   favorite?: boolean;
   folder?: string;
   deletedAt?: number; // set while the board is in the trash
+  teamId?: string; // the team it belongs to ("" = personal)
+  teamName?: string;
   role?: "owner" | "editor" | "viewer"; // your right (missing = owner); boards shared with you have editor / viewer
   ownerName?: string; // for boards shared with you
   objects: BoardObject[]; // needed for the dashboard thumbnails
 }
-export type BoardPatch = { name?: string; favorite?: boolean; folder?: string; trashed?: boolean };
+export type BoardPatch = { name?: string; favorite?: boolean; folder?: string; trashed?: boolean; teamId?: string };
 export const TRASH_DAYS = 30;
 export interface BoardFull extends BoardSummary {
   viewport: Viewport;
@@ -90,9 +92,9 @@ export const localRepo: Repo = {
   },
 };
 
-const summary = (b: { id: string; name: string; createdAt: number; updatedAt: number; objects: BoardObject[]; favorite?: boolean; folder?: string; deletedAt?: number; role?: "owner" | "editor" | "viewer"; ownerName?: string }): BoardSummary => ({
+const summary = (b: { id: string; name: string; createdAt: number; updatedAt: number; objects: BoardObject[]; favorite?: boolean; folder?: string; deletedAt?: number; role?: "owner" | "editor" | "viewer"; ownerName?: string; teamId?: string; teamName?: string }): BoardSummary => ({
   id: b.id, name: b.name, createdAt: b.createdAt, updatedAt: b.updatedAt, objects: b.objects,
-  favorite: !!b.favorite, folder: b.folder ?? "", deletedAt: b.deletedAt ?? 0, role: b.role ?? "owner", ownerName: b.ownerName,
+  favorite: !!b.favorite, folder: b.folder ?? "", deletedAt: b.deletedAt ?? 0, role: b.role ?? "owner", ownerName: b.ownerName, teamId: b.teamId ?? "", teamName: b.teamName,
 });
 
 export const cloudRepo: Repo = {

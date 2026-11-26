@@ -2,6 +2,8 @@
 export type Tool = "select" | "sticky" | "shape" | "pen" | "text" | "connector" | "frame" | "comment" | "hand" | "table";
 export type ShapeKind = "rect" | "ellipse" | "diamond" | "triangle" | "hexagon" | "star" | "arrow" | "speech" | "cloud" | "cylinder";
 
+import type { Span } from "./richtext";
+
 interface Base {
   id: string;
   x: number;
@@ -17,6 +19,7 @@ interface Base {
   underline?: boolean;
   bullets?: boolean; // every line starts with a bullet
   align?: "left" | "center" | "right";
+  spans?: Span[]; // word-level formatting (bold/italic/underline/colour) over `text`; sticky, shape, text
   fs?: number; // font size (sticky, shape, table); 0 or missing = default. Text objects use fontSize
 }
 

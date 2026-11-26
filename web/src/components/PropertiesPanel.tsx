@@ -1,7 +1,8 @@
 import { VoteButtons } from "./Extras";
 import { voterId } from "../extras";
 import { useAuth } from "../auth";
-import { useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { richColor, richCommand, richState, RICH_TYPES } from "../richdom";
 import { SHAPE_KINDS } from "../shapes";
 import { addCol, addRow, removeCol, removeRow } from "../table";
 import { FONT_SIZES, firstLink } from "../textstyle";
@@ -117,6 +118,16 @@ export default function PropertiesPanel() {
   const duplicateSelected = useBoard((s) => s.duplicateSelected);
 
   const canEdit = useBoard((s) => s.role !== "viewer");
+  const editingId = useBoard((s) => s.editingId);
+  // while words are being edited (sticky, shape, text box), the B / I / U buttons and colours act on the selected words
+  const richEditing = !!editingId && selected.length === 1 && selected[0].id === editingId && (RICH_TYPES as readonly string[]).includes(selected[0].type);
+  const [, bump] = useState(0);
+  useEffect(() => {
+    if (!richEditing) return;
+    const on = () => bump((n) => n + 1);
+    document.addEventListener("selectionchange", on);
+    return () => document.removeEventListener("selectionchange", on);
+  }, [richEditing]);
   const viewport = useBoard((s) => s.viewport);
   // The bar's real width, so it can be kept inside the window (it is wider for text and tables).
   const barRef = useRef<HTMLDivElement>(null);
@@ -223,17 +234,26 @@ export default function PropertiesPanel() {
                 key={k}
                 data-testid={`fmt-${k}`}
                 aria-label={k}
-                aria-pressed={!!first[k]}
+                aria-pressed={richEditing && k !== "bullets" ? richState(k) : !!first[k]}
+                onMouseDown={(e) => e.preventDefault()} // keep the selected words selected
                 onClick={() => {
+                  if (richEditing && k !== "bullets") return richCommand(k);
                   const on = !selected.every((o) => o[k]);
                   patchAll(() => ({ [k]: on }));
                 }}
-                className={`h-7 w-7 rounded-md text-xs ${cls} ${selected.every((o) => o[k]) ? "bg-brand text-white" : "text-muted hover:bg-sunken hover:text-ink"}`}
+                className={`h-7 w-7 rounded-md text-xs ${cls} ${(richEditing && k !== "bullets" ? richState(k) : selected.every((o) => o[k])) ? "bg-brand text-white" : "text-muted hover:bg-sunken hover:text-ink"}`}
               >
                 {t}
               </button>
             ))}
           </div>
+          {richEditing && (
+            <div className="flex items-center gap-1" role="group" aria-label="Word colour" data-testid="word-colours">
+              {INK_COLORS.map((c) => (
+                <button key={c} onMouseDown={(e) => e.preventDefault()} onClick={() => richColor(c)} aria-label={`Word colour ${c}`} className="h-5 w-5 rounded-full border border-black/10 hover:scale-110" style={{ background: c }} />
+              ))}
+            </div>
+          )}
           <div className="flex gap-0.5" role="group" aria-label="Alignment">
             {(["left", "center", "right"] as const).map((a) => (
               <button

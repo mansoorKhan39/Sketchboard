@@ -1,13 +1,13 @@
 import { nanoid } from "nanoid";
 import { z } from "zod";
 import type { Store } from "./store.js";
-import type { ApiRequest, ApiResponse, BoardRec, UserRec, Viewport } from "./types.js";
+import type { ApiRequest, ApiResponse, BoardRec, TeamRec, UserRec, Viewport } from "./types.js";
 import { addVersion } from "./versions.js";
 import { SESSION_DAYS, createAblyToken, createToken, hashPassword, readToken, verifyPassword } from "./security.js";
 import { createHash, randomBytes } from "node:crypto";
 import type { GoogleProfile } from "./google.js";
 import type { SendMail } from "./mail.js";
-import { addActivity, addNotification, atLeast, findMentioned, MAX_INVITES, MAX_MEMBERS, roleOf, type BoardRole } from "./collab.js";
+import { addActivity, addNotification, atLeast, findMentioned, MAX_INVITES, MAX_MEMBERS, MAX_TEAMS, MAX_TEAM_MEMBERS, roleOf, type BoardRole } from "./collab.js";
 
 export const COOKIE = "sb_session";
 const MAX_BOARD_BYTES = 3_000_000; // Vercel allows 4.5 MB per request; stay below it
@@ -50,14 +50,17 @@ const BoardObject = z.looseObject({
 });
 const ViewportSchema = z.object({ x: z.number(), y: z.number(), scale: z.number().min(0.01).max(100) });
 const Name = z.string().trim().min(1).max(100);
-const CreateBody = z.object({ name: Name.optional(), objects: z.array(BoardObject).max(5000).optional() });
+const CreateBody = z.object({ name: Name.optional(), objects: z.array(BoardObject).max(5000).optional(), teamId: z.string().max(40).optional() });
 const SaveBody = z.object({ objects: z.array(BoardObject).max(5000), viewport: ViewportSchema.optional() });
 const VersionBody = z.object({ label: z.string().trim().max(60).optional(), objects: z.array(BoardObject).max(5000) });
 // PATCH on a board: any of these. "trashed" moves it to / back from the trash.
 const PatchBody = z
-  .object({ name: Name.optional(), favorite: z.boolean().optional(), folder: z.string().trim().max(40).optional(), trashed: z.boolean().optional() })
+  .object({ name: Name.optional(), favorite: z.boolean().optional(), folder: z.string().trim().max(40).optional(), trashed: z.boolean().optional(), teamId: z.string().max(40).optional() })
   .refine((b) => Object.keys(b).length > 0, "Nothing to change");
 export const TRASH_DAYS = 30;
+const TeamName = z.string().trim().min(1, "Enter a team name").max(60);
+const TeamBody = z.object({ name: TeamName });
+const TeamInviteBody = z.object({ email: z.string().trim().toLowerCase().email().max(200), role: z.enum(["admin", "member"]) });
 const InviteBody = z.object({ email: z.string().trim().toLowerCase().email().max(200), role: z.enum(["editor", "viewer"]) });
 const MentionBody = z.object({ handles: z.array(z.string().max(60)).min(1).max(10), text: z.string().trim().max(500) });
 const ShareBody = z.object({ enabled: z.boolean(), right: z.enum(["viewer", "editor"]).optional(), regenerate: z.boolean().optional() });
@@ -83,7 +86,7 @@ const publicUser = (u: UserRec) => ({
 });
 const publicBoard = (b: BoardRec) => ({
   id: b.id, name: b.name, objects: b.objects, viewport: b.viewport, createdAt: b.createdAt, updatedAt: b.updatedAt,
-  favorite: !!b.favorite, folder: b.folder ?? "", deletedAt: b.deletedAt ?? 0,
+  favorite: !!b.favorite, folder: b.folder ?? "", deletedAt: b.deletedAt ?? 0, teamId: b.teamId ?? "",
 });
 
 export interface ApiConfig {
@@ -123,7 +126,8 @@ export function createApi(store: Store, config: ApiConfig) {
   // A board you may open: yours, or one somebody shared with you. `min` is the least right the action needs.
   async function accessBoard(id: string, user: UserRec, min: BoardRole): Promise<{ board: BoardRec; role: BoardRole }> {
     const board = await store.getBoard(id);
-    const role = board ? roleOf(board, user.id) : null;
+    const team = board?.teamId ? await store.getTeam(board.teamId) : null;
+    const role = board ? roleOf(board, user.id, team) : null;
     if (!board || !role) throw fail(404, "not_found", "Board not found.");
     if (!atLeast(role, min)) throw fail(403, "forbidden", min === "owner" ? "Only the owner can do this." : "You can only view this board.");
     return { board, role };
@@ -147,13 +151,33 @@ export function createApi(store: Store, config: ApiConfig) {
     const ids = [board.ownerId, ...(board.members ?? []).map((m) => m.userId)];
     const users = new Map((await store.findUsersByIds(ids)).map((u) => [u.id, u]));
     const owner = users.get(board.ownerId);
+    const team = board.teamId ? await store.getTeam(board.teamId) : null;
     return {
       you: role,
+      team: team ? { id: team.id, name: team.name } : null,
       owner: { id: board.ownerId, name: owner?.name ?? "Owner" },
       members: (board.members ?? []).map((m) => ({ userId: m.userId, name: users.get(m.userId)?.name ?? "Someone", email: role === "owner" ? users.get(m.userId)?.email : undefined, role: m.role })),
       invites: role === "owner" ? (board.invites ?? []).map((i) => ({ email: i.email, role: i.role })) : [],
     };
   }
+  // the team list of one person, shaped for the dashboard
+  const teamSummary = (t: TeamRec, userId: string) => ({ id: t.id, name: t.name, you: t.members.find((m) => m.userId === userId)?.role ?? "member", count: t.members.length });
+  async function teamDetail(t: TeamRec, userId: string) {
+    const admin = t.members.some((m) => m.userId === userId && m.role === "admin");
+    const users = new Map((await store.findUsersByIds(t.members.map((m) => m.userId))).map((u) => [u.id, u]));
+    return {
+      id: t.id, name: t.name, you: admin ? "admin" : "member",
+      members: t.members.map((m) => ({ userId: m.userId, name: users.get(m.userId)?.name ?? "Someone", email: admin ? users.get(m.userId)?.email : undefined, role: m.role })),
+      invites: admin ? t.invites.map((i) => ({ email: i.email, role: i.role })) : [],
+    };
+  }
+  const requireTeam = async (id: string, user: UserRec, admin = false): Promise<TeamRec> => {
+    const t = await store.getTeam(id);
+    const mine = t?.members.find((m) => m.userId === user.id);
+    if (!t || !mine) throw fail(404, "not_found", "Team not found.");
+    if (admin && mine.role !== "admin") throw fail(403, "forbidden", "Only a team admin can do this.");
+    return t;
+  };
   const checkSize = (objects: unknown[]) => {
     if (JSON.stringify(objects).length > MAX_BOARD_BYTES) throw fail(413, "too_large", "This board is too large to save.");
   };
@@ -359,19 +383,33 @@ export function createApi(store: Store, config: ApiConfig) {
           const members = [...(b.members ?? []).filter((m) => m.userId !== user.id), { userId: user.id, role: inv.role, addedAt: Date.now() }];
           await store.updateBoard(b.id, { members, invites: (b.invites ?? []).filter((i) => i.email !== user.email), activity: addActivity(b.activity, user.name, `${user.name} joined as ${inv.role}`) });
         }
-        const shared = (await store.listSharedBoards(user.id)).filter((b) => !b.deletedAt);
+        // pending team invitations too
+        for (const t of await store.findTeamsByInvite(user.email)) {
+          const inv = t.invites.find((i) => i.email === user.email);
+          if (!inv || t.members.some((m) => m.userId === user.id)) continue;
+          await store.updateTeam(t.id, { members: [...t.members, { userId: user.id, role: inv.role, addedAt: Date.now() }], invites: t.invites.filter((i) => i.email !== user.email) });
+        }
+        const teams = await store.listTeamsForUser(user.id);
+        const teamById = new Map(teams.map((t) => [t.id, t]));
+        const teamBoards = (await store.listTeamBoards(teams.map((t) => t.id))).filter((b) => b.ownerId !== user.id);
+        const named = (await store.listSharedBoards(user.id)).filter((b) => !teamBoards.some((x) => x.id === b.id));
+        // a board in a team is visible to the team; a trashed one only to its owner
+        const shared = [...teamBoards, ...named].filter((b) => !b.deletedAt);
         const owners = new Map((await store.findUsersByIds([...new Set(shared.map((b) => b.ownerId))])).map((u) => [u.id, u.name]));
+        const teamName = (b: BoardRec) => (b.teamId ? teamById.get(b.teamId)?.name : undefined);
         return json(200, {
-          boards: all.filter((b) => !old.includes(b)).map(publicBoard),
-          shared: shared.map((b) => ({ ...publicBoard(b), role: roleOf(b, user.id), ownerName: owners.get(b.ownerId) ?? "Someone" })),
+          boards: all.filter((b) => !old.includes(b)).map((b) => ({ ...publicBoard(b), teamName: teamName(b) })),
+          shared: shared.map((b) => ({ ...publicBoard(b), role: roleOf(b, user.id, b.teamId ? teamById.get(b.teamId) : null), ownerName: owners.get(b.ownerId) ?? "Someone", teamName: teamName(b) })),
+          teams: teams.map((t) => teamSummary(t, user.id)),
         });
       }
       if (!id && method === "POST") {
         const body = parse(CreateBody, req.body);
         checkSize(body.objects ?? []);
+        if (body.teamId) await requireTeam(body.teamId, user);
         const now = Date.now();
         const board: BoardRec = {
-          id: nanoid(12), ownerId: user.id, name: body.name ?? "Untitled board",
+          id: nanoid(12), ownerId: user.id, name: body.name ?? "Untitled board", teamId: body.teamId || "",
           objects: body.objects ?? [], viewport: DEFAULT_VIEWPORT, createdAt: now, updatedAt: now,
         };
         await store.insertBoard(board);
@@ -395,6 +433,16 @@ export function createApi(store: Store, config: ApiConfig) {
             patch.updatedAt = Date.now();
             patch.activity = addActivity(board.activity, user.name, `${user.name} renamed the board to "${body.name}"`);
           }
+          if (body.teamId !== undefined) {
+            if (board.ownerId !== user.id) throw fail(403, "forbidden", "Only the person who made the board can move it to a team.");
+            if (body.teamId) {
+              const t = await requireTeam(body.teamId, user);
+              patch.activity = addActivity(patch.activity ?? board.activity, user.name, `${user.name} moved the board to the team "${t.name}"`);
+            } else if (board.teamId) {
+              patch.activity = addActivity(patch.activity ?? board.activity, user.name, `${user.name} made the board personal again`);
+            }
+            patch.teamId = body.teamId;
+          }
           if (body.favorite !== undefined) patch.favorite = body.favorite;
           if (body.folder !== undefined) patch.folder = body.folder;
           if (body.trashed !== undefined) {
@@ -404,7 +452,7 @@ export function createApi(store: Store, config: ApiConfig) {
           }
           await store.updateBoard(id, patch);
           const now = { ...board, ...patch };
-          return json(200, { name: now.name, favorite: !!now.favorite, folder: now.folder ?? "", deletedAt: now.deletedAt ?? 0 });
+          return json(200, { name: now.name, favorite: !!now.favorite, folder: now.folder ?? "", deletedAt: now.deletedAt ?? 0, teamId: now.teamId ?? "" });
         }
         if (method === "DELETE") {
           await store.deleteBoard(id);
@@ -512,7 +560,8 @@ export function createApi(store: Store, config: ApiConfig) {
       if (id && seg[2] === "mentions" && method === "POST") {
         const { board } = await accessBoard(id, user, "editor");
         const { handles, text } = parse(MentionBody, req.body);
-        const people = (await store.findUsersByIds([board.ownerId, ...(board.members ?? []).map((m) => m.userId)])).map((u) => ({ id: u.id, name: u.name }));
+        const team = board.teamId ? await store.getTeam(board.teamId) : null;
+        const people = (await store.findUsersByIds([board.ownerId, ...(board.members ?? []).map((m) => m.userId), ...(team?.members.map((m) => m.userId) ?? [])])).map((u) => ({ id: u.id, name: u.name }));
         const hit = findMentioned(handles, people).filter((uid) => uid !== user.id);
         for (const uid of hit) await notify(uid, `${user.name} mentioned you in "${board.name}": ${text}`, board.id);
         return json(200, { notified: hit.length });
@@ -521,9 +570,81 @@ export function createApi(store: Store, config: ApiConfig) {
         const { board: src } = await accessBoard(id, user, "owner");
         const now = Date.now();
         // (the copy is a new board: no share link of its own yet, not starred, not in the trash)
-        const copy: BoardRec = { ...src, id: nanoid(12), name: `${src.name} copy`.slice(0, 100), share: undefined, members: [], invites: [], activity: [], favorite: false, deletedAt: 0, createdAt: now, updatedAt: now };
+        const copy: BoardRec = { ...src, ownerId: user.id, teamId: "", id: nanoid(12), name: `${src.name} copy`.slice(0, 100), share: undefined, members: [], invites: [], activity: [], favorite: false, deletedAt: 0, createdAt: now, updatedAt: now };
         await store.insertBoard(copy);
         return json(201, { board: publicBoard(copy) });
+      }
+    }
+
+    // ----- teams (workspaces) -----
+    if (seg[0] === "teams") {
+      const user = await requireUser(req);
+      const id = seg[1];
+      if (!id && method === "GET") return json(200, { teams: (await store.listTeamsForUser(user.id)).map((t) => teamSummary(t, user.id)) });
+      if (!id && method === "POST") {
+        const { name } = parse(TeamBody, req.body);
+        if ((await store.listTeamsForUser(user.id)).length >= MAX_TEAMS) throw fail(400, "limit", `You can be in up to ${MAX_TEAMS} teams.`);
+        const team: TeamRec = { id: nanoid(10), name, ownerId: user.id, members: [{ userId: user.id, role: "admin", addedAt: Date.now() }], invites: [], createdAt: Date.now() };
+        await store.insertTeam(team);
+        return json(201, { team: await teamDetail(team, user.id) });
+      }
+      if (id && !seg[2]) {
+        if (method === "GET") return json(200, { team: await teamDetail(await requireTeam(id, user), user.id) });
+        if (method === "PATCH") {
+          const t = await requireTeam(id, user, true);
+          const { name } = parse(TeamBody, req.body);
+          await store.updateTeam(id, { name });
+          return json(200, { team: await teamDetail({ ...t, name }, user.id) });
+        }
+        if (method === "DELETE") {
+          await requireTeam(id, user, true);
+          // its boards go back to being personal boards of the people who made them
+          for (const b of await store.listTeamBoards([id])) await store.updateBoard(b.id, { teamId: "" });
+          await store.deleteTeam(id);
+          return { status: 204 };
+        }
+      }
+      if (id && seg[2] === "members") {
+        if (!seg[3] && method === "PUT") {
+          const t = await requireTeam(id, user, true);
+          const { email, role } = parse(TeamInviteBody, req.body);
+          if (email === user.email) throw fail(400, "invalid_input", "That is your own address.");
+          const target = await store.findUserByEmail(email);
+          const link = config.appUrl ?? "";
+          let next: TeamRec;
+          let emailed = false;
+          if (target) {
+            const had = t.members.some((m) => m.userId === target.id);
+            if (!had && t.members.length >= MAX_TEAM_MEMBERS) throw fail(400, "limit", `A team can have up to ${MAX_TEAM_MEMBERS} people.`);
+            next = { ...t, members: [...t.members.filter((m) => m.userId !== target.id), { userId: target.id, role, addedAt: t.members.find((m) => m.userId === target.id)?.addedAt ?? Date.now() }], invites: t.invites.filter((i) => i.email !== email) };
+            if (!had) {
+              await notify(target.id, `${user.name} added you to the team "${t.name}"`);
+              emailed = await mailTo(email, `${user.name} added you to a Sketchboard team`, `${user.name} added you to the team "${t.name}".\n\n${link ? `Open Sketchboard: ${link}\n` : "Sign in to Sketchboard to see its boards.\n"}`);
+            }
+          } else {
+            if (t.invites.length >= MAX_INVITES) throw fail(400, "limit", `A team can have up to ${MAX_INVITES} pending invitations.`);
+            next = { ...t, invites: [...t.invites.filter((i) => i.email !== email), { email, role, at: Date.now() }] };
+            emailed = await mailTo(email, `${user.name} invited you to a Sketchboard team`, `${user.name} invited you to the team "${t.name}".\n\nCreate a free account with this e-mail address and the team will be waiting for you.\n${link ? `\n${link}\n` : ""}`);
+          }
+          await store.updateTeam(id, { members: next.members, invites: next.invites });
+          return json(200, { team: await teamDetail(next, user.id), emailed });
+        }
+        if (seg[3] && method === "DELETE") {
+          const t = await requireTeam(id, user);
+          if (seg[3] !== user.id && !t.members.some((m) => m.userId === user.id && m.role === "admin")) throw fail(403, "forbidden", "Only a team admin can remove people.");
+          if (!t.members.some((m) => m.userId === seg[3])) throw fail(404, "not_found", "That person is not in this team.");
+          const members = t.members.filter((m) => m.userId !== seg[3]);
+          if (!members.some((m) => m.role === "admin")) throw fail(400, "last_admin", "A team needs at least one admin. Make someone else an admin first, or delete the team.");
+          await store.updateTeam(id, { members });
+          return json(200, { team: seg[3] === user.id ? null : await teamDetail({ ...t, members }, user.id) });
+        }
+      }
+      if (id && seg[2] === "invites" && seg[3] && method === "DELETE") {
+        const t = await requireTeam(id, user, true);
+        const email = decodeURIComponent(seg[3]).toLowerCase();
+        const invites = t.invites.filter((i) => i.email !== email);
+        await store.updateTeam(id, { invites });
+        return json(200, { team: await teamDetail({ ...t, invites }, user.id) });
       }
     }
 

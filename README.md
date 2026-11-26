@@ -115,3 +115,22 @@ can differ slightly between screens because there is no single server putting ed
 - **@mentions**: type `@Ali` in a comment (or tap a name chip). The first name works when it is unique on the board; otherwise use the full name without spaces.
 - **Follow**: click a person's avatar in the board bar; your screen copies their view until you pan or zoom yourself, or they leave.
 - No new environment variable. With `BREVO_API_KEY` set, invitations also arrive as e-mails (`APP_URL` makes the links correct).
+
+## Stage 20b: teams (workspaces)
+
+- A **team** is a group of people who share boards. Make one with "+ New team" on the dashboard; each team gets a chip. While a team chip is selected, "New board" creates the board inside that team.
+- **Roles**: *admin* has owner rights on every team board and manages people (invite by e-mail, change role, remove, rename, delete team); *member* can open and edit team boards. A team needs at least one admin.
+- Move a board with the card menu: "Move to team…" (only the person who made the board can move it; "Personal" moves it back). Deleting a team makes its boards personal again.
+- Access = the best of your own right, a named invite on the board, and your team role. Leaving a team removes access at once. Strangers get 404.
+- Team boards made by others appear under the team chip with "By <name> · can edit". Duplicating a team board gives you a personal copy.
+- API: `GET/POST /teams`, `GET/PATCH/DELETE /teams/:id`, `PUT /teams/:id/members`, `DELETE /teams/:id/members/:userId`, `DELETE /teams/:id/invites/:email`; boards accept `teamId` on create and PATCH. New MongoDB collection `teams` (indexes are created automatically).
+- Known limits: deleting an account does not remove the person from teams; no per-team board folders yet.
+
+## Stage 21: word-by-word text formatting
+
+- Double-click a sticky note, shape or text box, select some words, and press **Ctrl+B / I / U** or use the format bar (B, I, U, and the "Word colour" dots). Only the selected words change.
+- Data: the object keeps its plain `text`; a new optional field `spans` lists styled ranges `{s, e, b?, i?, u?, c?}` over that text (`src/richtext.ts`). Text and spans are saved in one change, so peers never see them out of step. Incoming spans are checked in `realtime/validate.ts` (`validSpans`).
+- Drawing: `src/richtext.ts` `layoutRich` cuts the text into lines (words are not split) and places every styled piece; `components/RichText.tsx` draws the pieces with Konva. SVG export uses the same layout with a rough letter width (`<tspan>` per piece); PNG/PDF use the canvas directly.
+- Editing: `components/RichEditor.tsx` is a `contentEditable` box over the object. `src/richdom.ts` turns text+spans into HTML and reads the typed HTML back. Whole-object Bold/Italic/Underline set before are moved into the words when you start editing, so nothing looks different.
+- Plain objects (no `spans`) are drawn exactly as before. Table cells are still plain text.
+- Known limits: pasting keeps only plain text; colour choices are the six ink colours; links are still found from the whole text (no per-word link yet).

@@ -40,3 +40,9 @@ Look and feel (Stage 13): landing page, sign-in card (inline messages, show/hide
 
 ### e2e-collab.cjs (Stage 20a)
 Two users (alice, and bob who is registered by the script). Checks invite, Shared with me, view-only, 403 on save, mention, bell, leave. Start `npm run dev` without ABLY_API_KEY, register alice first.
+
+### e2e-teams.cjs (Stage 20b)
+Alice and Bob: create a team, add Bob, board in team, Bob edits but cannot trash, move a board with the card menu, leave, delete team. Same setup as e2e-collab.cjs.
+
+### e2e-rich.cjs (Stage 21)
+Guest mode. Select single words in a sticky, make them bold/italic/red, check spans, re-open, undo/redo, reload, whole-object bold baking.

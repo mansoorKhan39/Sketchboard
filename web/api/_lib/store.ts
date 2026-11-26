@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
-import type { BoardRec, UserRec, VersionRec } from "./types.js";
+import type { BoardRec, TeamRec, UserRec, VersionRec } from "./types.js";
 
 // The database is hidden behind this small interface. Production uses MongoDB (mongo-store.ts);
 // tests use MemoryStore; local development uses FileStore (a JSON file), so no database is needed to try things out.
@@ -23,6 +23,13 @@ export interface Store {
   insertBoard(board: BoardRec): Promise<void>;
   updateBoard(id: string, patch: Partial<Omit<BoardRec, "id" | "ownerId">>): Promise<void>;
   deleteBoard(id: string): Promise<void>;
+  insertTeam(team: TeamRec): Promise<void>;
+  getTeam(id: string): Promise<TeamRec | null>;
+  updateTeam(id: string, patch: Partial<Omit<TeamRec, "id">>): Promise<void>;
+  deleteTeam(id: string): Promise<void>;
+  listTeamsForUser(userId: string): Promise<TeamRec[]>;
+  findTeamsByInvite(email: string): Promise<TeamRec[]>;
+  listTeamBoards(teamIds: string[]): Promise<BoardRec[]>;
   getVersions(boardId: string): Promise<VersionRec[]>; // oldest first
   setVersions(boardId: string, versions: VersionRec[]): Promise<void>;
 }
@@ -31,6 +38,7 @@ export class MemoryStore implements Store {
   protected users: UserRec[] = [];
   protected boards: BoardRec[] = [];
   protected versions: Record<string, VersionRec[]> = {};
+  protected teams: TeamRec[] = [];
 
   protected changed() {
     /* FileStore overrides this to write to disk */
@@ -97,6 +105,31 @@ export class MemoryStore implements Store {
     delete this.versions[id];
     this.changed();
   }
+  async insertTeam(team: TeamRec) {
+    this.teams.push(team);
+    this.changed();
+  }
+  async getTeam(id: string) {
+    return this.teams.find((t) => t.id === id) ?? null;
+  }
+  async updateTeam(id: string, patch: Partial<Omit<TeamRec, "id">>) {
+    const i = this.teams.findIndex((t) => t.id === id);
+    if (i >= 0) this.teams[i] = { ...this.teams[i], ...patch };
+    this.changed();
+  }
+  async deleteTeam(id: string) {
+    this.teams = this.teams.filter((t) => t.id !== id);
+    this.changed();
+  }
+  async listTeamsForUser(userId: string) {
+    return this.teams.filter((t) => t.members.some((m) => m.userId === userId));
+  }
+  async findTeamsByInvite(email: string) {
+    return this.teams.filter((t) => t.invites.some((i) => i.email === email));
+  }
+  async listTeamBoards(teamIds: string[]) {
+    return this.boards.filter((b) => b.teamId && teamIds.includes(b.teamId)).sort((a, b) => b.updatedAt - a.updatedAt);
+  }
   async getVersions(boardId: string) {
     return this.versions[boardId] ?? [];
   }
@@ -116,6 +149,7 @@ export class FileStore extends MemoryStore {
         this.users = d.users ?? [];
         this.boards = d.boards ?? [];
         this.versions = d.versions ?? {};
+        this.teams = d.teams ?? [];
       } catch {
         /* broken file — start empty */
       }
@@ -123,6 +157,6 @@ export class FileStore extends MemoryStore {
   }
   protected changed() {
     mkdirSync(dirname(this.file), { recursive: true });
-    writeFileSync(this.file, JSON.stringify({ users: this.users, boards: this.boards, versions: this.versions }));
+    writeFileSync(this.file, JSON.stringify({ users: this.users, boards: this.boards, versions: this.versions, teams: this.teams }));
   }
 }

@@ -80,3 +80,15 @@ test("convergence: two screens applying the same edits in the same order end up 
   const screen2 = edits.reduce((b, e) => applyOps(b, [...e]), edits.slice(0, 2).reduce((b, e) => applyOps(b, [...e]), [] as BoardObject[]));
   assert.deepEqual(screen1, screen2);
 });
+
+test("word styles travel as one change with the text, and bad spans from other people are refused", async () => {
+  const { checkOps } = await import("./validate.js");
+  const a = [sticky("a", { text: "hi there" })];
+  const b = [sticky("a", { text: "hi there!", spans: [{ s: 0, e: 2, b: true }] })];
+  const ops = diffOps(a, b);
+  assert.equal(ops.length, 1);
+  assert.deepEqual(Object.keys((ops[0] as { fields: object }).fields).sort(), ["spans", "text"]);
+  assert.equal(checkOps(ops, (id) => id === "a", 1), null);
+  assert.ok(checkOps([{ op: "set", id: "a", fields: { spans: [{ s: 5, e: 2 }] } }], () => true, 1));
+  assert.ok(checkOps([{ op: "set", id: "a", fields: { spans: "bold" } }], () => true, 1));
+});

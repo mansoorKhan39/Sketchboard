@@ -43,6 +43,16 @@ export interface InviteRec {
   role: "editor" | "viewer";
   at: number;
 }
+// A team (workspace): a group of people who share boards. "admin" has owner rights on the team's boards and manages people; "member" can edit them.
+export type TeamRole = "admin" | "member";
+export interface TeamRec {
+  id: string;
+  name: string;
+  ownerId: string; // who created it
+  members: { userId: string; role: TeamRole; addedAt: number }[];
+  invites: { email: string; role: TeamRole; at: number }[];
+  createdAt: number;
+}
 export interface ActivityRec {
   at: number;
   by: string; // the name of the person
@@ -58,6 +68,7 @@ export interface BoardRec {
   share?: ShareSettings;
   favorite?: boolean; // starred by the owner
   folder?: string; // name of the folder the owner put it in ("" or missing = no folder)
+  teamId?: string; // the team this board belongs to ("" or missing = personal board)
   members?: MemberRec[];
   invites?: InviteRec[];
   activity?: ActivityRec[]; // newest first, at most 100 (member changes, renames, trash, saved versions)

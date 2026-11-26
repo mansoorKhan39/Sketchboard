@@ -32,7 +32,7 @@ const { chromium } = require('playwright');
   await B.goto('http://localhost:5173/#/'); await B.waitForTimeout(900);
   await B.getByTestId('filter-shared').click();
   ok('Bob sees the board under Shared with me', (await B.getByTestId('board-card').count()) === 1);
-  ok('the card says who shared it and the right', (await B.getByTestId('board-card').textContent()).includes('Shared by') && (await B.getByTestId('board-card').textContent()).includes('can view'));
+  ok('the card says who shared it and the right', (await B.getByTestId('board-card').textContent()).includes('By ') && (await B.getByTestId('board-card').textContent()).includes('can view'));
   ok('a shared card has no star', (await B.getByTestId('board-star').count()) === 0);
   await B.getByTestId('board-menu').click();
   ok('the card menu only offers Leave', (await B.getByTestId('board-leave').count()) === 1 && (await B.getByTestId('board-trash').count()) === 0);

@@ -63,3 +63,10 @@ test("board file: wrong files are refused with a clear message", () => {
   assert.throws(() => parseBoardFile('{"objects":[]}'), /not a Sketchboard file/);
   assert.throws(() => parseBoardFile(JSON.stringify({ sketchboard: 1, objects: new Array(5001).fill(sticky) })), /more than 5000/);
 });
+
+test("SVG export draws word styles as separate styled pieces", () => {
+  const rich = { id: "r", type: "sticky", ...base, text: "a <b> c", color: "#FFD43B", spans: [{ s: 2, e: 5, b: true, c: "#E03131" }] } as BoardObject;
+  const svg = objectsToSvg([rich])!;
+  assert.match(svg, /<tspan[^>]*font-weight="700"[^>]*fill="#E03131"[^>]*>&lt;b&gt;<\/tspan>/);
+  assert.ok(!svg.includes("<b>"));
+});

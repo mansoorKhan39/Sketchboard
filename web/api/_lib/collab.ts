@@ -1,4 +1,4 @@
-import type { ActivityRec, BoardRec, NotificationRec } from "./types.js";
+import type { ActivityRec, BoardRec, NotificationRec, TeamRec } from "./types.js";
 
 // Who may do what on a board. The owner can do everything; a member is an "editor" or a "viewer".
 export type BoardRole = "owner" | "editor" | "viewer";
@@ -6,9 +6,22 @@ export const MAX_MEMBERS = 50;
 export const MAX_INVITES = 50;
 const RANK: Record<BoardRole, number> = { viewer: 1, editor: 2, owner: 3 };
 
-export function roleOf(board: BoardRec, userId: string): BoardRole | null {
-  if (board.ownerId === userId) return "owner";
-  return board.members?.find((m) => m.userId === userId)?.role ?? null;
+export const MAX_TEAMS = 10; // teams one person may belong to
+export const MAX_TEAM_MEMBERS = 50;
+
+// What a team gives you on its boards: admins can do everything, members can edit.
+export function teamRoleOf(team: TeamRec | null | undefined, userId: string): BoardRole | null {
+  const m = team?.members.find((x) => x.userId === userId);
+  return m ? (m.role === "admin" ? "owner" : "editor") : null;
+}
+
+// Your right on a board: the best of what you have as owner, as a named member, and through the board's team.
+export function roleOf(board: BoardRec, userId: string, team?: TeamRec | null): BoardRole | null {
+  const own: BoardRole | null = board.ownerId === userId ? "owner" : board.members?.find((m) => m.userId === userId)?.role ?? null;
+  const viaTeam = board.teamId && team && team.id === board.teamId ? teamRoleOf(team, userId) : null;
+  if (!own) return viaTeam;
+  if (!viaTeam) return own;
+  return atLeast(own, viaTeam) ? own : viaTeam;
 }
 export const atLeast = (role: BoardRole | null, min: BoardRole): boolean => !!role && RANK[role] >= RANK[min];
 

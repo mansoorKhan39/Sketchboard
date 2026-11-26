@@ -1,10 +1,11 @@
 import { MongoClient, type Collection } from "mongodb";
 import type { Store } from "./store.js";
-import type { BoardRec, UserRec, VersionRec } from "./types.js";
+import type { BoardRec, TeamRec, UserRec, VersionRec } from "./types.js";
 
 // MongoDB documents use our own string id as _id.
 type UserDoc = Omit<UserRec, "id"> & { _id: string };
 type BoardDoc = Omit<BoardRec, "id"> & { _id: string };
+type TeamDoc = Omit<TeamRec, "id"> & { _id: string };
 type VersionsDoc = { _id: string; versions: VersionRec[] }; // _id = the board id
 
 const toUser = (d: UserDoc): UserRec => {
@@ -16,13 +17,18 @@ const toBoard = (d: BoardDoc): BoardRec => {
   return { id: _id, ...rest };
 };
 
+const toTeam = (d: TeamDoc): TeamRec => {
+  const { _id, ...rest } = d;
+  return { id: _id, ...rest };
+};
+
 // One connection is reused for every request that lands on the same warm serverless instance.
 let clientPromise: Promise<MongoClient> | undefined;
 
 export function createMongoStore(uri: string, dbName: string): Store {
   let indexes: Promise<unknown> | undefined;
 
-  async function cols(): Promise<{ users: Collection<UserDoc>; boards: Collection<BoardDoc>; versions: Collection<VersionsDoc> }> {
+  async function cols(): Promise<{ users: Collection<UserDoc>; boards: Collection<BoardDoc>; versions: Collection<VersionsDoc>; teams: Collection<TeamDoc> }> {
     try {
       clientPromise ??= new MongoClient(uri, { maxPoolSize: 5, serverSelectionTimeoutMS: 8000 }).connect();
       const client = await clientPromise;
@@ -30,6 +36,7 @@ export function createMongoStore(uri: string, dbName: string): Store {
       const users = db.collection<UserDoc>("users");
       const boards = db.collection<BoardDoc>("boards");
       const versions = db.collection<VersionsDoc>("versions");
+      const teams = db.collection<TeamDoc>("teams");
       // creating an index that already exists does nothing, so this is safe on every cold start
       indexes ??= Promise.all([
         users.createIndex({ email: 1 }, { unique: true }),
@@ -38,9 +45,12 @@ export function createMongoStore(uri: string, dbName: string): Store {
         boards.createIndex({ "share.token": 1 }, { sparse: true }),
         boards.createIndex({ "members.userId": 1 }, { sparse: true }),
         boards.createIndex({ "invites.email": 1 }, { sparse: true }),
+        boards.createIndex({ teamId: 1 }, { sparse: true }),
+        teams.createIndex({ "members.userId": 1 }),
+        teams.createIndex({ "invites.email": 1 }, { sparse: true }),
       ]);
       await indexes;
-      return { users, boards, versions };
+      return { users, boards, versions, teams };
     } catch (e) {
       clientPromise = undefined; // let the next request try to connect again
       indexes = undefined;
@@ -131,6 +141,36 @@ export function createMongoStore(uri: string, dbName: string): Store {
       const { boards, versions } = await cols();
       await boards.deleteOne({ _id: id });
       await versions.deleteOne({ _id: id });
+    },
+    async insertTeam(team) {
+      const { teams } = await cols();
+      const { id, ...rest } = team;
+      await teams.insertOne({ _id: id, ...rest });
+    },
+    async getTeam(id) {
+      const { teams } = await cols();
+      const d = await teams.findOne({ _id: id });
+      return d ? toTeam(d) : null;
+    },
+    async updateTeam(id, patch) {
+      const { teams } = await cols();
+      await teams.updateOne({ _id: id }, { $set: patch });
+    },
+    async deleteTeam(id) {
+      const { teams } = await cols();
+      await teams.deleteOne({ _id: id });
+    },
+    async listTeamsForUser(userId) {
+      const { teams } = await cols();
+      return (await teams.find({ "members.userId": userId }).limit(50).toArray()).map(toTeam);
+    },
+    async findTeamsByInvite(email) {
+      const { teams } = await cols();
+      return (await teams.find({ "invites.email": email }).limit(50).toArray()).map(toTeam);
+    },
+    async listTeamBoards(teamIds) {
+      const { boards } = await cols();
+      return teamIds.length ? (await boards.find({ teamId: { $in: teamIds } }).sort({ updatedAt: -1 }).limit(200).toArray()).map(toBoard) : [];
     },
     async getVersions(boardId) {
       const { versions } = await cols();

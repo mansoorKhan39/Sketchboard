@@ -107,6 +107,7 @@ export default function PeoplePanel() {
           )}
           {note && <p data-testid="invite-note" className="mt-1.5 text-xs text-muted">{note}</p>}
 
+          {people.team && <p data-testid="people-team" className="mt-2 text-xs text-muted">Everyone in the team "{people.team.name}" can open this board.</p>}
           <ul className="mt-3 space-y-1.5" data-testid="member-list">
             <li className="flex items-center justify-between text-sm">
               <span className="truncate">{people.owner.name}</span>

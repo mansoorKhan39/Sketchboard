@@ -25,6 +25,7 @@ export interface Person {
 export interface People {
   you: BoardRole;
   owner: { id: string; name: string };
+  team?: { id: string; name: string } | null; // the team the board belongs to: everyone in it can open the board
   members: Person[];
   invites: { email: string; role: "editor" | "viewer" }[]; // only the owner sees these
   emailed?: boolean; // after an invitation: did an e-mail go out?
@@ -42,6 +43,20 @@ export interface NotificationItem {
   read: boolean;
 }
 
+export interface TeamSummary {
+  id: string;
+  name: string;
+  you: "admin" | "member";
+  count: number;
+}
+export interface TeamDetail {
+  id: string;
+  name: string;
+  you: "admin" | "member";
+  members: { userId: string; name: string; email?: string; role: "admin" | "member" }[];
+  invites: { email: string; role: "admin" | "member" }[]; // only admins see these
+}
+
 export interface CloudBoard {
   id: string;
   name: string;
@@ -54,6 +69,8 @@ export interface CloudBoard {
   deletedAt?: number; // moved to the trash at this time (0 = not in the trash)
   role?: BoardRole; // your right on this board (missing = owner)
   ownerName?: string; // only on boards shared with you
+  teamId?: string; // "" = personal board
+  teamName?: string;
 }
 
 export interface VersionInfo {
@@ -115,7 +132,15 @@ export const api = {
   updateProfile: (name: string) => call<{ user: User }>("PATCH", "/auth/me", { name }),
   changePassword: (current: string | undefined, password: string) => call<{ user: User }>("POST", "/auth/password", { current, password }),
   deleteAccount: (confirm: string) => call<void>("DELETE", "/auth/me", { confirm }),
-  listBoards: () => call<{ boards: CloudBoard[]; shared: CloudBoard[] }>("GET", "/boards"),
+  listBoards: () => call<{ boards: CloudBoard[]; shared: CloudBoard[]; teams?: TeamSummary[] }>("GET", "/boards"),
+  teams: () => call<{ teams: TeamSummary[] }>("GET", "/teams"),
+  createTeam: (name: string) => call<{ team: TeamDetail }>("POST", "/teams", { name }),
+  getTeam: (id: string) => call<{ team: TeamDetail }>("GET", `/teams/${id}`),
+  renameTeam: (id: string, name: string) => call<{ team: TeamDetail }>("PATCH", `/teams/${id}`, { name }),
+  deleteTeam: (id: string) => call<void>("DELETE", `/teams/${id}`),
+  inviteToTeam: (id: string, email: string, role: "admin" | "member") => call<{ team: TeamDetail; emailed?: boolean }>("PUT", `/teams/${id}/members`, { email, role }),
+  removeTeamMember: (id: string, userId: string) => call<{ team: TeamDetail | null }>("DELETE", `/teams/${id}/members/${userId}`),
+  cancelTeamInvite: (id: string, email: string) => call<{ team: TeamDetail }>("DELETE", `/teams/${id}/invites/${encodeURIComponent(email)}`),
   getPeople: (id: string) => call<People>("GET", `/boards/${id}/members`),
   invite: (id: string, email: string, role: "editor" | "viewer") => call<People>("PUT", `/boards/${id}/members`, { email, role }),
   removeMember: (id: string, userId: string) => call<People>("DELETE", `/boards/${id}/members/${userId}`),
@@ -128,7 +153,7 @@ export const api = {
   createBoard: (name: string, objects: BoardObject[]) => call<{ board: CloudBoard }>("POST", "/boards", { name, objects }),
   saveBoard: (id: string, objects: BoardObject[], viewport: Viewport) => call<{ updatedAt: number }>("PUT", `/boards/${id}`, { objects, viewport }),
   renameBoard: (id: string, name: string) => call<{ name: string }>("PATCH", `/boards/${id}`, { name }),
-  updateBoard: (id: string, patch: { name?: string; favorite?: boolean; folder?: string; trashed?: boolean }) => call<unknown>("PATCH", `/boards/${id}`, patch),
+  updateBoard: (id: string, patch: { name?: string; favorite?: boolean; folder?: string; trashed?: boolean; teamId?: string }) => call<unknown>("PATCH", `/boards/${id}`, patch),
   deleteBoard: (id: string) => call<void>("DELETE", `/boards/${id}`),
   joinBoard: (id: string) => call<JoinInfo>("POST", `/boards/${id}/join`),
   shareJoin: (token: string, name: string, guestId?: string) => call<JoinInfo>("POST", `/share/${token}/join`, { name, guestId }),

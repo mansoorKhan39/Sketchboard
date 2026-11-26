@@ -15,6 +15,7 @@ import type { Box } from "../snapping";
 import { curvePath, polygonPoints } from "../shapes";
 import { cellAt } from "../table";
 import { decorationOf, displayText, fontStyleOf } from "../textstyle";
+import RichText from "./RichText";
 
 interface Props {
   obj: Placeable;
@@ -220,7 +221,10 @@ export default function ObjectNode({ obj, draggable }: Props) {
             fill={mixHex(obj.color, "#000000", 0.16)}
             listening={false}
           />
-          {!hidden && (
+          {!hidden && !masked && !!obj.spans?.length && (
+            <RichText text={obj.text} spans={obj.spans} width={obj.width} height={obj.height} size={obj.fs || 18} pad={14} align={obj.align ?? "left"} bullets={obj.bullets} base={{ b: obj.bold, i: obj.italic, u: obj.underline }} fill="#1F2937" />
+          )}
+          {!hidden && !(!masked && !!obj.spans?.length) && (
             <Text
               text={masked ? "• • •" : displayText(obj, obj.text)}
               width={obj.width}
@@ -284,7 +288,10 @@ export default function ObjectNode({ obj, draggable }: Props) {
               )}
             </Group>
           )}
-          {!hidden && (
+          {!hidden && !!obj.spans?.length && (
+            <RichText text={obj.text} spans={obj.spans} width={obj.width} height={obj.height} size={obj.fs || 16} pad={10} align={obj.align ?? "center"} middle bullets={obj.bullets} base={{ b: obj.bold, i: obj.italic, u: obj.underline }} fill="#1F2937" />
+          )}
+          {!hidden && !obj.spans?.length && (
             <Text
               text={displayText(obj, obj.text)}
               width={obj.width}
@@ -383,7 +390,10 @@ export default function ObjectNode({ obj, draggable }: Props) {
         <>
           {/* invisible rect gives the text a clickable area */}
           <Rect width={obj.width} height={obj.height} fill="transparent" />
-          {!hidden && (
+          {!hidden && !!obj.spans?.length && (
+            <RichText text={obj.text} spans={obj.spans} width={obj.width} height={obj.height} size={obj.fontSize} pad={0} align={obj.align ?? "left"} bullets={obj.bullets} base={{ b: obj.bold, i: obj.italic, u: obj.underline }} fill={inkFor(obj.color, theme)} />
+          )}
+          {!hidden && !obj.spans?.length && (
             <Text
               text={displayText(obj, obj.text)}
               width={obj.width}

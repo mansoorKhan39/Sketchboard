@@ -3,6 +3,7 @@ import { connectorPoints, contentBounds } from "./geometry";
 import { isOverlay } from "./kinds";
 import { curvePath, polygonPoints } from "./shapes";
 import { decorationOf, displayText } from "./textstyle";
+import { layoutRich } from "./richtext";
 import { inkFor } from "./constants";
 
 // The board as one SVG picture (it stays sharp at any size, and opens in browsers, Figma, Inkscape ...).
@@ -33,8 +34,27 @@ export function wrapLines(text: string, width: number, fontSize: number): string
   return out;
 }
 
-type TextBox = { x: number; y: number; w: number; h: number; text: string; size: number; pad: number; align: "left" | "center" | "right"; middle?: boolean; color: string; style?: BoardObject };
+type TextBox = { spans?: BoardObject["spans"]; raw?: string; x: number; y: number; w: number; h: number; text: string; size: number; pad: number; align: "left" | "center" | "right"; middle?: boolean; color: string; style?: BoardObject };
+// Same layout as on the board, with a rough width per letter (an SVG file cannot measure text). Each styled piece is a <tspan>.
+function richSvg(t: TextBox): string {
+  const s = t.style;
+  const { lines, height } = layoutRich(t.raw ?? "", t.spans, {
+    width: t.w - 2 * t.pad, size: t.size, align: t.align, bullets: s?.bullets, base: { b: s?.bold, i: s?.italic, u: s?.underline },
+    measure: (txt, st) => txt.length * t.size * (st.b ? 0.6 : 0.55),
+  });
+  const startY = t.middle ? t.y + t.h / 2 - height / 2 : t.y + t.pad;
+  return lines
+    .map((l) =>
+      l.segs.length === 0 ? "" :
+      `<text y="${num(startY + l.y + t.size * 1.0)}" font-size="${t.size}" fill="${t.color}" xml:space="preserve">` +
+      l.segs.map((g) => `<tspan x="${num(t.x + t.pad + g.x)}"${g.b ? ' font-weight="700"' : ""}${g.i ? ' font-style="italic"' : ""}${g.u ? ' text-decoration="underline"' : ""}${g.c ? ` fill="${g.c}"` : ""}>${esc(g.text)}</tspan>`).join("") +
+      "</text>",
+    )
+    .join("");
+}
+
 function textSvg(t: TextBox): string {
+  if (t.spans?.length && t.raw !== undefined) return richSvg(t);
   if (!t.text.trim()) return "";
   const lines = wrapLines(t.text, t.w - 2 * t.pad, t.size);
   const lh = t.size * 1.25;
@@ -62,7 +82,7 @@ export function objectsToSvg(objects: BoardObject[], theme: "light" | "dark" = "
     const g = (inner: string) => `<g transform="translate(${num(o.x)} ${num(o.y)})${o.rotation ? ` rotate(${num(o.rotation)} ${num(o.width / 2)} ${num(o.height / 2)})` : ""}">${inner}</g>`;
     const label = (t: Omit<TextBox, "x" | "y" | "w" | "h" | "style">) => textSvg({ ...t, x: 0, y: 0, w: o.width, h: o.height, style: o });
     if (o.type === "sticky") {
-      parts.push(g(`<rect width="${num(o.width)}" height="${num(o.height)}" rx="4" fill="${esc(o.color)}"/>` + label({ text: displayText(o, o.text), size: o.fs || 18, pad: 14, align: o.align ?? "left", color: "#1F2937" })));
+      parts.push(g(`<rect width="${num(o.width)}" height="${num(o.height)}" rx="4" fill="${esc(o.color)}"/>` + label({ spans: o.spans, raw: o.text, text: displayText(o, o.text), size: o.fs || 18, pad: 14, align: o.align ?? "left", color: "#1F2937" })));
     } else if (o.type === "shape") {
       const fill = `fill="${esc(o.fill)}" stroke="${esc(o.stroke)}" stroke-width="${o.strokeWidth}" stroke-linejoin="round"`;
       const poly = polygonPoints(o.kind, o.width, o.height);
@@ -74,9 +94,9 @@ export function objectsToSvg(objects: BoardObject[], theme: "light" | "dark" = "
       else if (curve)
         body = `<g transform="scale(${num(o.width / 100)} ${num(o.height / 100)})"><path d="${curve.body}" ${fill} vector-effect="non-scaling-stroke"/>${curve.detail ? `<path d="${curve.detail}" fill="none" stroke="${esc(o.stroke)}" stroke-width="${o.strokeWidth}" vector-effect="non-scaling-stroke"/>` : ""}</g>`;
       else body = `<rect width="${num(o.width)}" height="${num(o.height)}" ${fill}/>`;
-      parts.push(g(body + label({ text: displayText(o, o.text), size: o.fs || 16, pad: 10, align: o.align ?? "center", middle: true, color: "#1F2937" })));
+      parts.push(g(body + label({ spans: o.spans, raw: o.text, text: displayText(o, o.text), size: o.fs || 16, pad: 10, align: o.align ?? "center", middle: true, color: "#1F2937" })));
     } else if (o.type === "text") {
-      parts.push(g(label({ text: displayText(o, o.text), size: o.fontSize, pad: 0, align: o.align ?? "left", color: ink(o.color) })));
+      parts.push(g(label({ spans: o.spans, raw: o.text, text: displayText(o, o.text), size: o.fontSize, pad: 0, align: o.align ?? "left", color: ink(o.color) })));
     } else if (o.type === "stroke") {
       const pts: string[] = [];
       for (let i = 0; i + 1 < o.points.length; i += 2) pts.push(`${num(o.points[i])},${num(o.points[i + 1])}`);

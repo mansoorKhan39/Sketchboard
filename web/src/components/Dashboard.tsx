@@ -9,7 +9,8 @@ import ThemeToggle from "./ThemeToggle";
 import AccountMenu from "./AccountMenu";
 import Logo from "./Logo";
 import Bell from "./Bell";
-import { api } from "../api";
+import TeamPanel from "./TeamPanel";
+import { api, type TeamSummary } from "../api";
 import Landing from "./Landing";
 
 const timeAgo = (t: number) => {
@@ -37,15 +38,16 @@ function TemplateCard({ t, onUse }: { t: Template; onUse: () => void }) {
   );
 }
 
-function BoardCard({ board, folders, onOpen, onChange }: { board: BoardSummary; folders: string[]; onOpen: () => void; onChange: () => void }) {
+function BoardCard({ board, folders, teams, onOpen, onChange }: { board: BoardSummary; folders: string[]; teams: TeamSummary[]; onOpen: () => void; onChange: () => void }) {
   const objects = board.objects;
   const trashed = !!board.deletedAt;
   const [menu, setMenu] = useState(false);
   const [renaming, setRenaming] = useState(false);
   const [moving, setMoving] = useState(false);
+  const [teamMenu, setTeamMenu] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const me = useAuth((s) => s.user);
-  const shared = !!board.role && board.role !== "owner";
+  const shared = !!board.ownerName; // somebody else's board (shared with me, or in my team)
   const ref = useRef<HTMLDivElement>(null);
 
   // close the menu when clicking anywhere else
@@ -56,6 +58,7 @@ function BoardCard({ board, folders, onOpen, onChange }: { board: BoardSummary; 
         setMenu(false);
         setConfirmDelete(false);
         setMoving(false);
+        setTeamMenu(false);
       }
     };
     window.addEventListener("mousedown", close);
@@ -65,6 +68,7 @@ function BoardCard({ board, folders, onOpen, onChange }: { board: BoardSummary; 
   const update = async (patch: BoardPatch) => {
     setMenu(false);
     setMoving(false);
+    setTeamMenu(false);
     await getRepo().update(board.id, patch).catch(() => {});
     onChange();
   };
@@ -110,11 +114,13 @@ function BoardCard({ board, folders, onOpen, onChange }: { board: BoardSummary; 
           )}
           <div className="truncate text-xs text-muted">
             {shared
-              ? `Shared by ${board.ownerName ?? "someone"} · ${board.role === "editor" ? "can edit" : "can view"}`
+              ? `${board.teamName ? `${board.teamName} · ` : ""}By ${board.ownerName ?? "someone"} · ${board.role === "viewer" ? "can view" : "can edit"}`
               : trashed ? `In trash since ${timeAgo(board.deletedAt!)}` : `Edited ${timeAgo(board.updatedAt)}`}
             {!shared && board.folder ? ` · ${board.folder}` : ""}
+            {!shared && board.teamName ? ` · ${board.teamName}` : ""}
           </div>
         </div>
+        {!(shared && board.teamId) && (
         <button
           onClick={() => setMenu((m) => !m)}
           aria-label={`Options for ${board.name}`}
@@ -123,6 +129,7 @@ function BoardCard({ board, folders, onOpen, onChange }: { board: BoardSummary; 
         >
           <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.8" /><circle cx="12" cy="12" r="1.8" /><circle cx="19" cy="12" r="1.8" /></svg>
         </button>
+        )}
       </div>
       {menu && (
         <div className="absolute right-0 top-[calc(100%-1.5rem)] z-30 w-52 rounded-xl border border-line bg-surface p-1 shadow-float">
@@ -154,6 +161,14 @@ function BoardCard({ board, folders, onOpen, onChange }: { board: BoardSummary; 
                 {confirmDelete ? "Click again to delete" : "Delete forever"}
               </button>
             </>
+          ) : teamMenu ? (
+            <div data-testid="team-menu">
+              <div className="px-3 py-1 text-xs text-muted">Move to…</div>
+              {board.teamId && <button className={item} data-testid="move-personal" onClick={() => { setTeamMenu(false); void update({ teamId: "" }); }}>Personal (only me)</button>}
+              {teams.filter((t) => t.id !== board.teamId).map((t) => (
+                <button key={t.id} className={item} data-testid={`move-team-${t.name}`} onClick={() => { setTeamMenu(false); void update({ teamId: t.id }); }}>{t.name}</button>
+              ))}
+            </div>
           ) : moving ? (
             <form
               className="p-1.5"
@@ -171,6 +186,7 @@ function BoardCard({ board, folders, onOpen, onChange }: { board: BoardSummary; 
             <>
               <button className={item} onClick={() => { setRenaming(true); setMenu(false); }}>Rename</button>
               <button className={item} data-testid="board-folder" onClick={() => setMoving(true)}>Move to folder…</button>
+              {(teams.length > 0 || board.teamId) && <button className={item} data-testid="board-team" onClick={() => setTeamMenu(true)}>Move to team…</button>}
               <button className={item} onClick={async () => { setMenu(false); await getRepo().duplicate(board.id).catch(() => {}); onChange(); }}>Duplicate</button>
               <button data-testid="board-trash" className={`${item} text-red-600`} onClick={() => update({ trashed: true })}>Move to trash</button>
             </>
@@ -192,11 +208,18 @@ export default function Dashboard() {
   const [moving, setMoving] = useState(false);
   const [filter, setFilter] = useState<string>("all"); // "all", "favorites", "trash" or "folder:<name>"
   const [note, setNote] = useState("");
+  const [teams, setTeams] = useState<TeamSummary[]>([]);
+  const [teamOpen, setTeamOpen] = useState<string | null>(null);
+  const [newTeam, setNewTeam] = useState<string | null>(null); // the name being typed, or null
   const importRef = useRef<HTMLInputElement>(null);
 
   const refresh = async () => {
     try {
       setBoards(await getRepo().list());
+      if (user) {
+        const t = await api.teams().catch(() => null); // awaited, so the team chip exists before we select it
+        if (t) setTeams(t.teams);
+      } else setTeams([]);
       setLoadError("");
     } catch (e) {
       setLoadError(e instanceof Error ? e.message : "Could not load your boards.");
@@ -233,7 +256,10 @@ export default function Dashboard() {
   const open = (id: string) => go({ name: "board", id });
   const create = async (name: string, objects: BoardSummary["objects"]) => {
     try {
-      open((await getRepo().create(name, objects)).id);
+      const made = await getRepo().create(name, objects);
+      // while a team is selected, new boards go into that team
+      if (filter.startsWith("team:") && user) await getRepo().update(made.id, { teamId: filter.slice(5) }).catch(() => {});
+      open(made.id);
     } catch (e) {
       setLoadError(e instanceof Error ? e.message : "Could not create the board.");
     }
@@ -254,10 +280,10 @@ export default function Dashboard() {
     }
   };
 
-  const isShared = (b: BoardSummary) => !!b.role && b.role !== "owner";
+  const isShared = (b: BoardSummary) => !!b.ownerName;
   const live = boards.filter((b) => !b.deletedAt);
   const mine = live.filter((b) => !isShared(b));
-  const sharedWithMe = live.filter(isShared);
+  const sharedWithMe = live.filter((b) => isShared(b) && !b.teamId);
   const trash = boards.filter((b) => !!b.deletedAt && !isShared(b));
   const folders = [...new Set(mine.map((b) => b.folder).filter((f): f is string => !!f))].sort((a, b) => a.localeCompare(b));
   const q = query.trim().toLowerCase();
@@ -265,14 +291,15 @@ export default function Dashboard() {
     filter === "trash"
       ? !!b.deletedAt && !isShared(b)
       : !b.deletedAt &&
-        (filter === "all" || (filter === "shared" ? isShared(b) : !isShared(b) && (filter === "favorites" ? !!b.favorite : b.folder === filter.slice(7))));
+        (filter === "all" || (filter.startsWith("team:") ? b.teamId === filter.slice(5) : filter === "shared" ? isShared(b) && !b.teamId : !isShared(b) && (filter === "favorites" ? !!b.favorite : b.folder === filter.slice(7))));
   const shown = boards.filter((b) => inView(b) && (!q || b.name.toLowerCase().includes(q) || (b.folder ?? "").toLowerCase().includes(q)));
   // a folder that became empty (or a trash that was emptied) falls back to "All"
   useEffect(() => {
     if (filter.startsWith("folder:") && !folders.includes(filter.slice(7))) setFilter("all");
     if (filter === "trash" && !trash.length) setFilter("all");
     if (filter === "shared" && !sharedWithMe.length) setFilter("all");
-  }, [boards]); // eslint-disable-line react-hooks/exhaustive-deps
+    if (filter.startsWith("team:") && !teams.some((t) => t.id === filter.slice(5))) setFilter("all");
+  }, [boards, teams]); // eslint-disable-line react-hooks/exhaustive-deps
   const chip = (id: string, label: string, count?: number) => (
     <button
       key={id}
@@ -365,15 +392,40 @@ export default function Dashboard() {
             </div>
           </div>
 
-          {boards.length > 0 && (
+          {(boards.length > 0 || teams.length > 0 || !!user) && (
             <div className="mt-4 flex flex-wrap items-center gap-2" role="group" aria-label="Show boards">
               {chip("all", "All", live.length)}
               {chip("favorites", "Favourites", mine.filter((b) => b.favorite).length)}
               {sharedWithMe.length > 0 && chip("shared", "Shared with me", sharedWithMe.length)}
               {folders.map((f) => chip(`folder:${f}`, f, mine.filter((b) => b.folder === f).length))}
+              {teams.map((t) => chip(`team:${t.id}`, t.name, live.filter((b) => b.teamId === t.id).length))}
               {trash.length > 0 && chip("trash", "Trash", trash.length)}
+              {user && (newTeam === null ? (
+                <button onClick={() => setNewTeam("")} data-testid="new-team" className="h-8 whitespace-nowrap rounded-full border border-dashed border-line px-3 text-sm text-muted hover:border-brand hover:text-ink">+ New team</button>
+              ) : (
+                <form
+                  className="flex items-center gap-1.5"
+                  onSubmit={async (e) => {
+                    e.preventDefault();
+                    const n = newTeam.trim();
+                    if (!n) return;
+                    try { const r = await api.createTeam(n); setNewTeam(null); await refresh(); setFilter(`team:${r.team.id}`); }
+                    catch (err) { setNote(err instanceof Error ? err.message : "Could not create the team."); }
+                  }}
+                >
+                  <input autoFocus value={newTeam} onChange={(e) => setNewTeam(e.target.value)} onKeyDown={(e) => e.key === "Escape" && setNewTeam(null)} maxLength={60} placeholder="Team name" aria-label="Team name" data-testid="new-team-name" className="h-8 w-40 rounded-full border border-brand bg-surface px-3 text-sm outline-none" />
+                  <button data-testid="new-team-create" className="h-8 rounded-full bg-brand px-3 text-sm font-medium text-white">Create</button>
+                </form>
+              ))}
             </div>
           )}
+          {filter.startsWith("team:") && teams.find((t) => t.id === filter.slice(5)) && (
+            <div className="mt-3 flex items-center justify-between gap-3 rounded-xl border border-line bg-surface px-4 py-2.5" data-testid="team-banner">
+              <p className="text-sm">Team <b>{teams.find((t) => t.id === filter.slice(5))!.name}</b> · {teams.find((t) => t.id === filter.slice(5))!.count} {teams.find((t) => t.id === filter.slice(5))!.count === 1 ? "person" : "people"}. New boards you make here are shared with the team.</p>
+              <button onClick={() => setTeamOpen(filter.slice(5))} data-testid="team-manage" className="h-8 rounded-lg border border-line px-3 text-sm font-medium hover:border-brand">People</button>
+            </div>
+          )}
+          {teamOpen && <TeamPanel teamId={teamOpen} onClose={() => setTeamOpen(null)} onChanged={() => void refresh()} />}
           {filter === "trash" && (
             <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-line bg-surface px-4 py-3" data-testid="trash-banner">
               <p className="text-sm">Boards in the trash are deleted for good after {TRASH_DAYS} days.</p>
@@ -407,7 +459,7 @@ export default function Dashboard() {
             </button>
             )}
             {shown.map((b) => (
-              <BoardCard key={b.id} board={b} folders={folders} onOpen={() => open(b.id)} onChange={refresh} />
+              <BoardCard key={b.id} board={b} folders={folders} teams={teams} onOpen={() => open(b.id)} onChange={refresh} />
             ))}
           </div>
           {loading && <p className="mt-8 text-sm text-muted">Loading your boards…</p>}
